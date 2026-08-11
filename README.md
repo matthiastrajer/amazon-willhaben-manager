@@ -30,7 +30,7 @@ Danach in Chrome:
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` (inkl. Verifikation) |
 | `npm run build:only` | Build ohne vorherigen Typecheck |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest-Suite (172 Tests) |
+| `npm test` | Vitest-Suite (184 Tests) |
 | `npm run test:watch` | Tests im Watch-Modus |
 | `npm run icons` | Icons neu generieren |
 | `npm run zip` | `dist/` als ZIP für den Web Store packen |
@@ -176,7 +176,7 @@ wirklich hat:
 | --- | --- |
 | **Verkaufspreis** | geplanter Verkaufspreis; ganze Beträge ohne Nachkommastellen (`79`, nicht `79,00` – das Preisfeld filtert das sonst weg) |
 | **Titel** | Kernbegriff des Amazon-Titels, nicht 1:1 kopiert |
-| **Beschreibung** | kurze Stichpunktliste |
+| **Beschreibung** | kurze Stichpunktliste, nur deutschsprachige Quelltexte |
 
 Marke, Farbe, Größe, Zustand, PLZ und Ort werden bewusst **nicht** versucht: das
 Formular hat keine solchen Felder, und der Kontaktblock wird von Willhaben aus
@@ -209,6 +209,15 @@ Amazon-Bulletpoints beginnen meist mit einem geschrienen Schlagwort
 ein echter Satz folgt, und der Rest wird an einer Wortgrenze gekürzt. Der
 Wortlaut wird nie verändert, nur verkürzt. Über die Einstellung „Kurze
 Beschreibung" lässt sich die ausführliche Variante zurückholen.
+
+### Nur deutscher Text
+
+Herstellertexte auf amazon.de sind häufig englisch oder nur teilweise übersetzt.
+Solche Bulletpoints und Beschreibungen werden **verworfen**, statt sie in eine
+deutsche Anzeige zu kopieren — eine kürzere deutsche Beschreibung ist besser als
+eine gemischtsprachige. Die Erkennung zählt Funktionswörter („der/die/das/und/für"
+gegen „the/and/for/with") und wertet Umlaute sowie „ß" als eindeutig deutsch; nur
+bei klarer englischer Mehrheit wird ein Absatz verworfen.
 
 Hinweis: Titel und Beschreibung entstehen **regelbasiert, nicht per KI** – die
 Erweiterung arbeitet rein lokal und schickt keine Produktdaten an einen Dienst.
@@ -278,6 +287,14 @@ bevorzugt verwendet).
 
 ## Aktuelle technische Einschränkungen
 
+0. **Rich-Text-Beschreibung.** Das Beschreibungsfeld ist ein Editor, kein
+   `<textarea>`. Unterstützt werden `contenteditable`, `role="textbox"` sowie die
+   Marker von ProseMirror, Quill, Lexical, Slate und TinyMCE; geschrieben wird
+   über vier Wege (Editier-Kommando → synthetisches Einfügen → InputEvent →
+   direkte Zuweisung), jeder mit Rücklesen geprüft. Welchen Editor Willhaben
+   einsetzt, ist von außen nicht feststellbar — schlägt es fehl, zeigt der
+   Debug-Modus alle erkannten Bedienelemente samt Merkmalen an.
+
 1. **Bild-Upload ist manuell.** Ein `<input type="file">` lässt sich aus
    Sicherheitsgründen nicht programmatisch befüllen. Die Erweiterung bereitet die
    Bild-URLs auf und stellt sie zum Kopieren bereit; die Auswahl der Dateien
@@ -333,7 +350,7 @@ bevorzugt verwendet).
 npm test
 ```
 
-172 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
+184 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
 Suchseiten), ASIN-/Preis-/Bild-Erkennung, Duplikaterkennung, Titel- und
 Beschreibungsgenerierung, Kategorie-Mapping, Preis- und Gewinnberechnung
 (inkl. Verlusten und Nullwerten), Storage inklusive gleichzeitiger Schreibzugriffe,

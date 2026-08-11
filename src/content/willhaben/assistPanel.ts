@@ -81,6 +81,12 @@ input.url {
   font: inherit; font-size: 12px; background: var(--awm-bg); color: var(--awm-text);
 }
 .collapsed .body, .collapsed footer { display: none; }
+details.debug { font-size: 11px; border: 1px solid var(--awm-border); border-radius: 8px; padding: 6px 8px; }
+details.debug summary { cursor: pointer; font-weight: 600; color: var(--awm-muted); }
+details.debug pre {
+  margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 10px;
+  max-height: 220px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 .teaching { outline: 3px dashed var(--awm-brand) !important; outline-offset: 2px; }
 `;
 
@@ -96,6 +102,8 @@ export interface AssistPanelState {
   results: FieldFillResult[];
   formDetected: boolean;
   error?: string;
+  /** Debug-mode only: what the field discovery actually saw on this page. */
+  debug?: string[];
 }
 
 const STATE_LABELS: Record<FieldFillResult['status'], string> = {
@@ -197,6 +205,17 @@ export class AssistPanel {
       list.appendChild(this.fieldItem(result));
     }
     body.appendChild(list);
+
+    if (state.debug?.length) {
+      const details = document.createElement('details');
+      details.className = 'debug';
+      const summary = document.createElement('summary');
+      summary.textContent = `Debug: ${state.debug.length} Bedienelemente erkannt`;
+      const pre = document.createElement('pre');
+      pre.textContent = state.debug.join('\n');
+      details.append(summary, pre);
+      body.appendChild(details);
+    }
 
     return body;
   }

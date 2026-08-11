@@ -49,7 +49,7 @@ export class WillhabenAdapter implements PlatformAdapter {
       };
     }
 
-    const fields = fillWillhabenForm(product, this.settings, {
+    const fields = await fillWillhabenForm(product, this.settings, {
       hints: options.hints,
       doc: this.doc,
     });

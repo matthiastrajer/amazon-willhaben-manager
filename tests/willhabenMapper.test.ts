@@ -191,9 +191,9 @@ describe('product → field mapping', () => {
 });
 
 describe('form filling', () => {
-  it('fills a labelled form and reports every field', () => {
+  it('fills a labelled form and reports every field', async () => {
     const d = doc(labelledForm());
-    const results = fillWillhabenForm(product(), allFieldSettings, { doc: d });
+    const results = await fillWillhabenForm(product(), allFieldSettings, { doc: d });
 
     expect((d.getElementById('ad-title') as HTMLInputElement).value).toBe(
       'Fitgriff Zughilfen / Lifting Straps – Neu',
@@ -207,29 +207,29 @@ describe('form filling', () => {
     expect(titleResult.status).toBe('filled');
   });
 
-  it('selects the matching option in a <select>', () => {
+  it('selects the matching option in a <select>', async () => {
     const d = doc(labelledForm());
-    fillWillhabenForm(product(), allFieldSettings, { doc: d });
+    await fillWillhabenForm(product(), allFieldSettings, { doc: d });
     expect((d.getElementById('ad-condition') as HTMLSelectElement).value).toBe('new');
   });
 
-  it('ticks checkboxes for shipping and pickup', () => {
+  it('ticks checkboxes for shipping and pickup', async () => {
     const d = doc(labelledForm());
-    fillWillhabenForm(product(), allFieldSettings, { doc: d });
+    await fillWillhabenForm(product(), allFieldSettings, { doc: d });
     expect((d.getElementById('ad-shipping') as HTMLInputElement).checked).toBe(true);
     expect((d.getElementById('ad-pickup') as HTMLInputElement).checked).toBe(true);
   });
 
-  it('never reports category or images as automatically filled', () => {
-    const results = fillWillhabenForm(product(), allFieldSettings, { doc: doc(labelledForm()) });
+  it('never reports category or images as automatically filled', async () => {
+    const results = await fillWillhabenForm(product(), allFieldSettings, { doc: doc(labelledForm()) });
     expect(results.find((r) => r.field === 'category')!.status).toBe('manual');
     expect(results.find((r) => r.field === 'images')!.status).toBe('manual');
     // The value is still carried so the user can copy it.
     expect(results.find((r) => r.field === 'images')!.value).toContain('https://');
   });
 
-  it('reports unmatched fields as not-found with their value preserved', () => {
-    const results = fillWillhabenForm(product(), settings, { doc: doc(partialForm()) });
+  it('reports unmatched fields as not-found with their value preserved', async () => {
+    const results = await fillWillhabenForm(product(), settings, { doc: doc(partialForm()) });
     const price = results.find((r) => r.field === 'price')!;
     expect(price.status).toBe('not-found');
     expect(price.value).toBe('19,99');
@@ -238,13 +238,13 @@ describe('form filling', () => {
     expect(results.find((r) => r.field === 'title')!.status).toBe('filled');
   });
 
-  it('honours a user-taught selector over automatic matching', () => {
+  it('honours a user-taught selector over automatic matching', async () => {
     const html = `<form>
       <input id="mystery" type="text">
       <label for="other">Irgendwas</label><input id="other" type="text">
     </form>`;
     const d = new JSDOM(html).window.document;
-    const results = fillWillhabenForm(product(), settings, {
+    const results = await fillWillhabenForm(product(), settings, {
       doc: d,
       hints: { title: '#mystery' },
     });
@@ -254,16 +254,16 @@ describe('form filling', () => {
     expect(results.find((r) => r.field === 'title')!.matchedBy).toBe('hint');
   });
 
-  it('fills the aria-only form', () => {
+  it('fills the aria-only form', async () => {
     const d = doc(ariaForm());
-    fillWillhabenForm(product(), settings, { doc: d });
+    await fillWillhabenForm(product(), settings, { doc: d });
     const title = d.querySelector('[aria-label="Anzeigentitel"]') as HTMLInputElement;
     expect(title.value).toBe('Fitgriff Zughilfen / Lifting Straps – Neu');
   });
 
-  it('fills the framework-rendered form', () => {
+  it('fills the framework-rendered form', async () => {
     const d = doc(frameworkForm());
-    fillWillhabenForm(product(), settings, { doc: d });
+    await fillWillhabenForm(product(), settings, { doc: d });
     const title = d.querySelector('[data-testid="ad-insertion-title-field"]') as HTMLInputElement;
     const price = d.querySelector('[data-testid="ad-insertion-price-field"]') as HTMLInputElement;
     expect(title.value).toContain('Fitgriff');
@@ -313,9 +313,9 @@ describe('real Willhaben Marktplatz form layout', () => {
     expect(priceEl.id).not.toBe('giveaway');
   });
 
-  it('fills the real form layout end to end', () => {
+  it('fills the real form layout end to end', async () => {
     const d = doc(marktplatzForm());
-    const results = fillWillhabenForm(product(), settings, { doc: d });
+    const results = await fillWillhabenForm(product(), settings, { doc: d });
 
     const title = d.querySelector('input[placeholder^="z.B. Levi"]') as HTMLInputElement;
     const price = d.querySelector('.sc-h') as HTMLInputElement;
@@ -327,15 +327,15 @@ describe('real Willhaben Marktplatz form layout', () => {
     expect(results.find((r) => r.field === 'description')!.status).toBe('filled');
   });
 
-  it('reports the category as manual, since Willhaben derives it from the title', () => {
-    const results = fillWillhabenForm(product(), allFieldSettings, { doc: doc(marktplatzForm()) });
+  it('reports the category as manual, since Willhaben derives it from the title', async () => {
+    const results = await fillWillhabenForm(product(), allFieldSettings, { doc: doc(marktplatzForm()) });
     const category = results.find((r) => r.field === 'category')!;
     expect(category.status).toBe('manual');
     expect(category.reason).toMatch(/Anzeigentitel/);
   });
 
-  it('treats the hidden file input as a manual step', () => {
-    const results = fillWillhabenForm(product(), settings, { doc: doc(marktplatzForm()) });
+  it('treats the hidden file input as a manual step', async () => {
+    const results = await fillWillhabenForm(product(), settings, { doc: doc(marktplatzForm()) });
     expect(results.find((r) => r.field === 'images')!.status).toBe('manual');
   });
 

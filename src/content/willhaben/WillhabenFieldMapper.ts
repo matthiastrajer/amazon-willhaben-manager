@@ -11,6 +11,7 @@ import {
 import {
   collectCandidates,
   discoverFields,
+  isEditableHost,
   type Candidate,
   type FieldMatch,
 } from './fieldDiscovery';
@@ -154,7 +155,10 @@ export function setControlValue(el: HTMLElement, value: string): boolean {
 
     el.dispatchEvent(new win.Event('input', { bubbles: true }));
     el.dispatchEvent(new win.Event('change', { bubbles: true }));
-    el.dispatchEvent(new win.Event('blur', { bubbles: true }));
+    // Deliberately NO blur here. Blurring synchronously made the form run its
+    // "required" validation before it had processed the new value, so the price
+    // field showed "Dieses Feld muss ausgefüllt werden" even though the value
+    // was there. The user's first interaction blurs the field naturally.
     return el.value === value;
   }
 
@@ -172,7 +176,7 @@ export function setControlValue(el: HTMLElement, value: string): boolean {
     return true;
   }
 
-  if (el.getAttribute('contenteditable') === 'true') {
+  if (isEditableHost(el)) {
     return setRichTextValue(el, value);
   }
 
@@ -180,38 +184,96 @@ export function setControlValue(el: HTMLElement, value: string): boolean {
 }
 
 /**
+ * The element that actually holds the text. A `role="textbox"` wrapper often
+ * sits around the real contenteditable node, and writing to the wrapper would
+ * either do nothing or destroy the editor's own DOM.
+ */
+function resolveEditable(el: HTMLElement): HTMLElement {
+  const attr = el.getAttribute('contenteditable');
+  if (attr !== null && attr !== 'false') return el;
+  const inner = el.querySelector<HTMLElement>('[contenteditable]:not([contenteditable="false"])');
+  return inner ?? el;
+}
+
+/** Did the value land? Compared loosely, because editors re-wrap the markup. */
+function editorHasValue(el: HTMLElement, value: string): boolean {
+  const got = normalizeKey(el.textContent ?? '');
+  const want = normalizeKey(value.slice(0, 40));
+  return want.length > 0 && got.includes(want);
+}
+
+function selectAll(el: HTMLElement): void {
+  const doc = el.ownerDocument;
+  const win = doc.defaultView ?? window;
+  const range = doc.createRange();
+  range.selectNodeContents(el);
+  const selection = win.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+/**
  * Writes into a rich-text editor (the description field is one).
  *
- * Assigning `textContent` is not enough: editors like ProseMirror/Slate keep
- * their own document model and overwrite the DOM on the next render. Selecting
- * the existing content and inserting text through the editing command pipeline
- * produces real beforeinput/input events, which is what the editor listens to.
+ * Assigning `textContent` is not enough on its own: editors such as ProseMirror,
+ * Lexical or Quill keep their own document model and overwrite the DOM on the
+ * next render. So several routes are tried in descending order of authenticity,
+ * each verified by reading the text back:
+ *
+ *   1. `insertText` command — drives the editor's own input handling
+ *   2. a synthetic paste with a DataTransfer — the route editors support best
+ *   3. a `beforeinput`/`input` InputEvent pair carrying the text
+ *   4. direct `textContent` assignment as a last resort
  */
-function setRichTextValue(el: HTMLElement, value: string): boolean {
+function setRichTextValue(host: HTMLElement, value: string): boolean {
+  const el = resolveEditable(host);
   const doc = el.ownerDocument;
   const win = doc.defaultView ?? window;
 
   el.focus();
 
+  // 1. editing command
   try {
-    const range = doc.createRange();
-    range.selectNodeContents(el);
-    const selection = win.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    // execCommand is deprecated but remains the only widely supported way to
-    // drive an editor's own input handling from the outside.
-    const inserted = doc.execCommand?.('insertText', false, value);
-    if (inserted && normalizeKey(el.textContent ?? '').length > 0) return true;
+    selectAll(el);
+    if (doc.execCommand?.('insertText', false, value) && editorHasValue(el, value)) return true;
   } catch {
-    // Not available (e.g. jsdom) — fall through to the direct assignment.
+    // not supported here
   }
 
+  // 2. synthetic paste
+  try {
+    if (typeof win.DataTransfer === 'function' && typeof win.ClipboardEvent === 'function') {
+      selectAll(el);
+      const data = new win.DataTransfer();
+      data.setData('text/plain', value);
+      el.dispatchEvent(
+        new win.ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }),
+      );
+      if (editorHasValue(el, value)) return true;
+    }
+  } catch {
+    // not supported here
+  }
+
+  // 3. InputEvent pair
+  try {
+    if (typeof win.InputEvent === 'function') {
+      selectAll(el);
+      const init = { bubbles: true, cancelable: true, inputType: 'insertText', data: value };
+      el.dispatchEvent(new win.InputEvent('beforeinput', init));
+      el.textContent = value;
+      el.dispatchEvent(new win.InputEvent('input', init));
+      if (editorHasValue(el, value)) return true;
+    }
+  } catch {
+    // not supported here
+  }
+
+  // 4. plain assignment
   el.textContent = value;
   el.dispatchEvent(new win.Event('input', { bubbles: true }));
   el.dispatchEvent(new win.Event('change', { bubbles: true }));
-  return (el.textContent ?? '').includes(value.slice(0, 20));
+  return editorHasValue(el, value);
 }
 
 /** Checkbox/radio handling: a truthy value ticks the box. */
@@ -232,7 +294,14 @@ export interface FillOptions {
   /** User-taught element hints: field id -> CSS selector. */
   hints?: Partial<Record<WillhabenFieldId, string>>;
   doc?: Document;
+  /** Pause between fields so the page's framework can flush its state. */
+  settleMs?: number;
 }
+
+const DEFAULT_SETTLE_MS = 40;
+
+const settle = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
 /**
  * Fills the form and reports, field by field, what happened.
@@ -243,11 +312,11 @@ export interface FillOptions {
  *   not-found  – no control matched with sufficient confidence
  *   skipped    – no value available for this product
  */
-export function fillWillhabenForm(
+export async function fillWillhabenForm(
   product: Product,
   settings: Settings,
   options: FillOptions = {},
-): FieldFillResult[] {
+): Promise<FieldFillResult[]> {
   const doc = options.doc ?? document;
   const values = mapProductToFields(product, settings);
   const candidates = collectCandidates(doc);
@@ -307,6 +376,12 @@ export function fillWillhabenForm(
         ? setToggle(el as HTMLInputElement, mapped.value)
         : setControlValue(el, mapped.value);
 
+    // Yield before touching the next field. Focusing the next control blurs this
+    // one synchronously, and a framework that has not flushed its state yet then
+    // validates against the old value — which is what made the price field show
+    // "Dieses Feld muss ausgefüllt werden" right after it had been filled.
+    await settle(options.settleMs ?? DEFAULT_SETTLE_MS);
+
     results.push({
       field: mapped.field,
       label: mapped.label,
@@ -318,6 +393,12 @@ export function fillWillhabenForm(
         : 'Der Wert konnte nicht übernommen werden – bitte manuell eintragen.',
     });
   }
+
+  // Release the focus once everything is in place, so the form validates against
+  // the final values instead of against a half-filled state.
+  await settle(options.settleMs ?? DEFAULT_SETTLE_MS);
+  const active = doc.activeElement as HTMLElement | null;
+  if (active && typeof active.blur === 'function') active.blur();
 
   return results;
 }

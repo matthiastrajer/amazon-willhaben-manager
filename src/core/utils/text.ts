@@ -47,6 +47,55 @@ export function stripMarketingNoise(input: string): string {
   );
 }
 
+/**
+ * Function words. Content words differ per product, function words do not, which
+ * makes them a cheap and reliable language signal for short marketing text.
+ */
+const GERMAN_MARKERS = [
+  'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'einem',
+  'und', 'oder', 'aber', 'nicht', 'ist', 'sind', 'wird', 'werden', 'kann',
+  'fuer', 'mit', 'ohne', 'auch', 'sich', 'sie', 'ihre', 'ihren', 'sehr',
+  'zum', 'zur', 'auf', 'aus', 'bei', 'durch', 'wenn', 'noch', 'sowie',
+];
+
+const ENGLISH_MARKERS = [
+  'the', 'and', 'for', 'with', 'without', 'this', 'that', 'these', 'those',
+  'is', 'are', 'was', 'were', 'can', 'will', 'your', 'you', 'our', 'its',
+  'from', 'have', 'has', 'been', 'more', 'than', 'when', 'which', 'also',
+  'made', 'easy', 'perfect', 'suitable',
+];
+
+function countMarkers(tokens: string[], markers: string[]): number {
+  const set = new Set(markers);
+  return tokens.reduce((n, t) => (set.has(t) ? n + 1 : n), 0);
+}
+
+/**
+ * Heuristic language check for a chunk of product copy.
+ *
+ * Manufacturer text on a German Amazon listing is frequently English (or only
+ * partly translated). Copying that into a German classified ad reads badly, so
+ * such text is skipped rather than passed through.
+ *
+ * Only a clear English majority counts; anything ambiguous is treated as German
+ * so that legitimate text is never dropped on a weak signal.
+ */
+export function looksEnglish(text: string): boolean {
+  const raw = text ?? '';
+  if (raw.trim().length < 25) return false;
+
+  // Umlauts and ß are decisive on their own.
+  if (/[äöüÄÖÜß]/.test(raw)) return false;
+
+  const tokens = tokenize(raw, 2);
+  if (tokens.length < 5) return false;
+
+  const german = countMarkers(tokens, GERMAN_MARKERS);
+  const english = countMarkers(tokens, ENGLISH_MARKERS);
+
+  return english >= 2 && english > german * 2;
+}
+
 /** Title-cases a word while leaving ALLCAPS acronyms alone. */
 export function smartCapitalize(word: string): string {
   if (word.length <= 1) return word.toUpperCase();

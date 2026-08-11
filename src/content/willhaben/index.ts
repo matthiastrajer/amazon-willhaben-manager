@@ -9,6 +9,7 @@ import type { WillhabenFieldId } from './willhabenSelectors';
 import { WillhabenAdapter } from './WillhabenAdapter';
 import { detectWillhabenPage, isAdDetailPage, waitForForm } from './willhabenDetector';
 import { AssistPanel, pickElement, selectorFor } from './assistPanel';
+import { collectCandidates } from './fieldDiscovery';
 
 /**
  * Willhaben content script.
@@ -53,6 +54,24 @@ function looksLikeErrorPage(): boolean {
   return /seite wurde nicht gefunden|nicht gefunden|404|page not found/.test(`${heading} ${title}`);
 }
 
+/**
+ * One line per detected control, shown in debug mode.
+ *
+ * This is the fastest way to find out why a field was missed on a page that
+ * cannot be inspected from the outside: the user can read off exactly what
+ * evidence the discovery engine had to work with.
+ */
+function describeControls(): string[] {
+  return collectCandidates(document).map((c, i) => {
+    const evidence = Object.entries(c.evidence)
+      .filter(([, v]) => v)
+      .map(([k, v]) => `${k}="${v.slice(0, 40)}"`)
+      .join(' ');
+    const tag = c.element.tagName.toLowerCase();
+    return `${i + 1}. <${tag}> kind=${c.kind} visible=${c.visible} ${evidence || '(keine Merkmale)'}`;
+  });
+}
+
 async function runFill(pending: PendingListing): Promise<void> {
   const settings = await SettingsService.get();
   const adapter = new WillhabenAdapter(settings, document);
@@ -91,6 +110,7 @@ async function runFill(pending: PendingListing): Promise<void> {
     results: result.fields,
     formDetected: result.formDetected,
     error: result.error,
+    debug: settings.debugMode ? describeControls() : undefined,
   });
 
   if (result.formDetected) {

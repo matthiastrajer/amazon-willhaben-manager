@@ -55,6 +55,34 @@ const INPUT_TYPE_KINDS: Record<string, ControlKind> = {
   file: 'file',
 };
 
+/**
+ * Rich-text editors that are not plain `contenteditable="true"`.
+ *
+ * These are markers published by the editor libraries themselves (ProseMirror,
+ * Quill, Lexical, Slate, TinyMCE) — stable library contracts, not marketplace
+ * styling, so relying on them does not make the extension brittle.
+ */
+export const EDITABLE_SELECTOR = [
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="textbox"]',
+  '.ProseMirror',
+  '.ql-editor',
+  '[data-lexical-editor]',
+  '[data-slate-editor]',
+  '.mce-content-body',
+].join(', ');
+
+/** True for any element that behaves like a rich-text input. */
+export function isEditableHost(el: Element): boolean {
+  const attr = el.getAttribute('contenteditable');
+  if (attr !== null && attr !== 'false') return true;
+  try {
+    return el.matches(EDITABLE_SELECTOR);
+  } catch {
+    return false;
+  }
+}
+
 function kindOf(el: Element): ControlKind | null {
   const tag = el.tagName.toLowerCase();
   if (tag === 'textarea') return 'textarea';
@@ -63,9 +91,7 @@ function kindOf(el: Element): ControlKind | null {
     const type = (el.getAttribute('type') ?? 'text').toLowerCase();
     return INPUT_TYPE_KINDS[type] ?? null;
   }
-  if (el.getAttribute('contenteditable') === 'true' || el.getAttribute('role') === 'textbox') {
-    return 'textarea';
-  }
+  if (isEditableHost(el)) return 'textarea';
   return null;
 }
 
@@ -147,7 +173,13 @@ function nearbyText(el: Element): string {
   return '';
 }
 
-const CONTROL_QUERY = 'input, select, textarea, [contenteditable="true"]';
+const CONTROL_QUERY = [
+  'input',
+  'select',
+  'textarea',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="textbox"]',
+].join(', ');
 
 /**
  * The visible caption of a field when the form does not use a real <label>.
@@ -223,7 +255,7 @@ export function describeCandidate(el: FormControl | HTMLElement): Candidate | nu
 export function collectCandidates(doc: Document | Element = document): Candidate[] {
   const nodes = Array.from(
     doc.querySelectorAll<FormControl | HTMLElement>(
-      'input, textarea, select, [contenteditable="true"], [role="textbox"]',
+      `input, textarea, select, ${EDITABLE_SELECTOR}`,
     ),
   );
   const candidates: Candidate[] = [];

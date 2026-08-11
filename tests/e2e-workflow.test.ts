@@ -93,7 +93,7 @@ describe('end-to-end: Amazon → Willhaben → Verkauf → Dashboard', () => {
     const willhabenDoc = new JSDOM(labelledForm(), { url: CREATE_FORM_URL }).window.document;
     expect(detectWillhabenPage(willhabenDoc, CREATE_FORM_URL).formReady).toBe(true);
 
-    const fillResults = fillWillhabenForm(product, settings, { doc: willhabenDoc });
+    const fillResults = await fillWillhabenForm(product, settings, { doc: willhabenDoc });
     expect((willhabenDoc.getElementById('ad-title') as HTMLInputElement).value).toBe(
       product.listingTitle,
     );
@@ -225,7 +225,7 @@ describe('end-to-end: Amazon → Willhaben → Verkauf → Dashboard', () => {
 
     // And the Willhaben form still receives everything that is known.
     const willhabenDoc = new JSDOM(labelledForm(), { url: CREATE_FORM_URL }).window.document;
-    const results = fillWillhabenForm(product, settings, { doc: willhabenDoc });
+    const results = await fillWillhabenForm(product, settings, { doc: willhabenDoc });
     expect(results.find((r) => r.field === 'title')!.status).toBe('filled');
     expect(results.find((r) => r.field === 'price')!.status).toBe('filled');
   });

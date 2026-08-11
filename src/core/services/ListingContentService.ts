@@ -1,7 +1,7 @@
 import { CONDITION_LABELS, type Product } from '@/core/models/Product';
 import type { Settings } from '@/core/models/Settings';
 import type { Template } from '@/core/models/Template';
-import { normalizeWhitespace, stripMarketingNoise, tokenize } from '@/core/utils/text';
+import { looksEnglish, normalizeWhitespace, stripMarketingNoise, tokenize } from '@/core/utils/text';
 
 /**
  * Generates the listing title and description.
@@ -172,12 +172,19 @@ export function generateListingTitle(
   return normalizeWhitespace(title + suffix);
 }
 
-/** Bullet points that are pure marketing rather than product information. */
+/**
+ * Bullet points that are pure marketing rather than product information.
+ *
+ * English source text is dropped: the ad is written in German, and manufacturer
+ * copy on a German listing is often untranslated. A shorter German description
+ * beats a mixed-language one.
+ */
 function usefulBullets(bullets: string[], limit: number): string[] {
   return bullets
     .map((b) => normalizeWhitespace(b))
     .filter((b) => b.length >= 8 && b.length <= 300)
     .filter((b) => !/^(hinweis|achtung|lieferumfang beachten)/i.test(b))
+    .filter((b) => !looksEnglish(b))
     .slice(0, limit);
 }
 
@@ -259,7 +266,7 @@ export function generateListingDescription(
       blocks.push(bullets.map((b) => `• ${compactBullet(b)}`).join('\n'));
     } else if (product.description) {
       const text = normalizeWhitespace(product.description);
-      if (text.length > 20) blocks.push(compactBullet(text, 220));
+      if (text.length > 20 && !looksEnglish(text)) blocks.push(compactBullet(text, 220));
     }
 
     const facts = [
@@ -284,7 +291,7 @@ export function generateListingDescription(
 
   if (bullets.length) {
     blocks.push(['Eigenschaften:', ...bullets.map((b) => `• ${b}`)].join('\n'));
-  } else if (product.description) {
+  } else if (product.description && !looksEnglish(product.description)) {
     const text = normalizeWhitespace(product.description);
     if (text.length > 20) blocks.push(text.slice(0, 600));
   }
