@@ -220,6 +220,16 @@ export function SettingsPage({ store }: { store: Store }) {
               label="Beschreibung automatisch generieren"
             />
             <Checkbox
+              checked={s.compactDescription}
+              onChange={(v) => void update({ compactDescription: v })}
+              label="Kurze Beschreibung (Stichpunkte statt Volltext)"
+            />
+            <Checkbox
+              checked={s.onlyCoreFields}
+              onChange={(v) => void update({ onlyCoreFields: v })}
+              label="Nur Verkaufspreis, Titel und Beschreibung übernehmen"
+            />
+            <Checkbox
               checked={s.autoPrepareImages}
               onChange={(v) => void update({ autoPrepareImages: v })}
               label="Bilder automatisch für die Anzeige vorauswählen"

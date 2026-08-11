@@ -200,7 +200,7 @@ describe('listing description generation', () => {
   };
 
   it('builds a structured description from real data only', () => {
-    const text = generateListingDescription(base);
+    const text = generateListingDescription(base, { compact: false });
     expect(text).toContain('Fitgriff');
     expect(text).toContain('Eigenschaften:');
     expect(text).toContain('• MAXIMALER HALT');

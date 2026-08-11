@@ -30,7 +30,7 @@ Danach in Chrome:
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` (inkl. Verifikation) |
 | `npm run build:only` | Build ohne vorherigen Typecheck |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest-Suite (155 Tests) |
+| `npm test` | Vitest-Suite (172 Tests) |
 | `npm run test:watch` | Tests im Watch-Modus |
 | `npm run icons` | Icons neu generieren |
 | `npm run zip` | `dist/` als ZIP für den Web Store packen |
@@ -167,6 +167,54 @@ ausschließlich auf `amazon.de`, `amazon.at`, `amazon.com` und `willhaben.at`.
 
 ---
 
+## Was in die Anzeige übernommen wird
+
+Standardmäßig nur die drei Felder, die das Willhaben-Marktplatz-Formular
+wirklich hat:
+
+| Feld | Herkunft |
+| --- | --- |
+| **Verkaufspreis** | geplanter Verkaufspreis; ganze Beträge ohne Nachkommastellen (`79`, nicht `79,00` – das Preisfeld filtert das sonst weg) |
+| **Titel** | Kernbegriff des Amazon-Titels, nicht 1:1 kopiert |
+| **Beschreibung** | kurze Stichpunktliste |
+
+Marke, Farbe, Größe, Zustand, PLZ und Ort werden bewusst **nicht** versucht: das
+Formular hat keine solchen Felder, und der Kontaktblock wird von Willhaben aus
+dem Konto gefüllt. Wer sie für ein anderes Formular braucht, schaltet in den
+Einstellungen „Nur Verkaufspreis, Titel und Beschreibung übernehmen" ab.
+
+### Titel-Kürzung
+
+Ein Marktplatz-Titel wird gescannt, nicht gelesen. Aus
+
+> YOLEO YOLEO klappbare Hantelbank Multifunktion Training Fitness Bank
+> Bauchtrainer Schrägbank mit 6-Fach Verstellbarer Rückenlehne…
+
+wird
+
+> **YOLEO klappbare Hantelbank – Neu**
+
+Die Regel nutzt die deutsche Großschreibung: Adjektive stehen vor dem Substantiv,
+also endet der Produktname beim **ersten großgeschriebenen Wort** („klappbare
+**Hantelbank**"). Bindewörter wie „für", „mit", „inkl." beenden die Phrase
+ebenfalls. Ist ein Titel durchgehend groß geschrieben (typisch für englische
+Titel), greift stattdessen eine Grenze von drei Wörtern. Es werden immer nur
+Wörter **entfernt** – nie eines hinzugefügt.
+
+### Beschreibung
+
+Kurzform aus Kopfzeile, bis zu vier verdichteten Stichpunkten und dem Zustand.
+Amazon-Bulletpoints beginnen meist mit einem geschrienen Schlagwort
+(„MULTIFUNKTIONAL – Die Hantelbank lässt sich…"); das Schlagwort entfällt, wenn
+ein echter Satz folgt, und der Rest wird an einer Wortgrenze gekürzt. Der
+Wortlaut wird nie verändert, nur verkürzt. Über die Einstellung „Kurze
+Beschreibung" lässt sich die ausführliche Variante zurückholen.
+
+Hinweis: Titel und Beschreibung entstehen **regelbasiert, nicht per KI** – die
+Erweiterung arbeitet rein lokal und schickt keine Produktdaten an einen Dienst.
+
+---
+
 ## Wie die Formularerkennung funktioniert
 
 Willhabens Anzeigenformular ist eine dynamisch gerenderte Anwendung mit
@@ -285,7 +333,7 @@ bevorzugt verwendet).
 npm test
 ```
 
-155 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
+172 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
 Suchseiten), ASIN-/Preis-/Bild-Erkennung, Duplikaterkennung, Titel- und
 Beschreibungsgenerierung, Kategorie-Mapping, Preis- und Gewinnberechnung
 (inkl. Verlusten und Nullwerten), Storage inklusive gleichzeitiger Schreibzugriffe,

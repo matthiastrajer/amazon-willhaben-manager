@@ -39,6 +39,12 @@ const settings = {
   defaultShipping: 'Versand möglich',
 };
 
+/**
+ * By default only price/title/description are transferred. These suites verify
+ * the discovery engine across the whole profile set, so they opt out.
+ */
+const allFieldSettings = { ...settings, onlyCoreFields: false };
+
 function product(overrides: Partial<Product> = {}): Product {
   return {
     id: 'p1',
@@ -160,7 +166,7 @@ describe('semantic field discovery', () => {
 
 describe('product → field mapping', () => {
   it('produces the expected values without touching the DOM', () => {
-    const values = mapProductToFields(product(), settings);
+    const values = mapProductToFields(product(), allFieldSettings);
     const byField = Object.fromEntries(values.map((v) => [v.field, v.value]));
 
     expect(byField.title).toBe('Fitgriff Zughilfen / Lifting Straps – Neu');
@@ -175,7 +181,7 @@ describe('product → field mapping', () => {
   it('omits fields for which the product has no data', () => {
     const values = mapProductToFields(
       product({ brand: undefined, color: undefined, size: undefined, plannedSalePrice: undefined }),
-      { ...settings, defaultPostalCode: '', defaultLocation: '' },
+      { ...allFieldSettings, defaultPostalCode: '', defaultLocation: '' },
     );
     const fields = values.map((v) => v.field);
     expect(fields).not.toContain('brand');
@@ -187,7 +193,7 @@ describe('product → field mapping', () => {
 describe('form filling', () => {
   it('fills a labelled form and reports every field', () => {
     const d = doc(labelledForm());
-    const results = fillWillhabenForm(product(), settings, { doc: d });
+    const results = fillWillhabenForm(product(), allFieldSettings, { doc: d });
 
     expect((d.getElementById('ad-title') as HTMLInputElement).value).toBe(
       'Fitgriff Zughilfen / Lifting Straps – Neu',
@@ -203,19 +209,19 @@ describe('form filling', () => {
 
   it('selects the matching option in a <select>', () => {
     const d = doc(labelledForm());
-    fillWillhabenForm(product(), settings, { doc: d });
+    fillWillhabenForm(product(), allFieldSettings, { doc: d });
     expect((d.getElementById('ad-condition') as HTMLSelectElement).value).toBe('new');
   });
 
   it('ticks checkboxes for shipping and pickup', () => {
     const d = doc(labelledForm());
-    fillWillhabenForm(product(), settings, { doc: d });
+    fillWillhabenForm(product(), allFieldSettings, { doc: d });
     expect((d.getElementById('ad-shipping') as HTMLInputElement).checked).toBe(true);
     expect((d.getElementById('ad-pickup') as HTMLInputElement).checked).toBe(true);
   });
 
   it('never reports category or images as automatically filled', () => {
-    const results = fillWillhabenForm(product(), settings, { doc: doc(labelledForm()) });
+    const results = fillWillhabenForm(product(), allFieldSettings, { doc: doc(labelledForm()) });
     expect(results.find((r) => r.field === 'category')!.status).toBe('manual');
     expect(results.find((r) => r.field === 'images')!.status).toBe('manual');
     // The value is still carried so the user can copy it.
@@ -322,7 +328,7 @@ describe('real Willhaben Marktplatz form layout', () => {
   });
 
   it('reports the category as manual, since Willhaben derives it from the title', () => {
-    const results = fillWillhabenForm(product(), settings, { doc: doc(marktplatzForm()) });
+    const results = fillWillhabenForm(product(), allFieldSettings, { doc: doc(marktplatzForm()) });
     const category = results.find((r) => r.field === 'category')!;
     expect(category.status).toBe('manual');
     expect(category.reason).toMatch(/Anzeigentitel/);

@@ -97,8 +97,12 @@ describe('end-to-end: Amazon → Willhaben → Verkauf → Dashboard', () => {
     expect((willhabenDoc.getElementById('ad-title') as HTMLInputElement).value).toBe(
       product.listingTitle,
     );
-    expect((willhabenDoc.getElementById('ad-price') as HTMLInputElement).value).toBe('20,00');
-    expect(fillResults.filter((r) => r.status === 'filled').length).toBeGreaterThanOrEqual(5);
+    expect((willhabenDoc.getElementById('ad-price') as HTMLInputElement).value).toBe('20');
+    expect(fillResults.filter((r) => r.status === 'filled').map((r) => r.field).sort()).toEqual([
+      'description',
+      'price',
+      'title',
+    ]);
     // The extension must never claim it published anything.
     expect(product.status).not.toBe('LISTED');
 

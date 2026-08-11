@@ -35,9 +35,28 @@ export interface MappedValue {
   note?: string;
 }
 
+/**
+ * Formats a price for the ad form.
+ *
+ * A whole amount is written without decimals: the marketplace's price input
+ * filters the input itself, and feeding it "79,00" left "79" behind while the
+ * field still counted as unfilled. Sending "79" avoids that entirely.
+ */
+export function formatPriceForForm(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace('.', ',');
+}
+
+/** The fields the Willhaben Marktplatz form actually offers. */
+const CORE_FIELDS: WillhabenFieldId[] = ['price', 'title', 'description'];
+
 /** Builds the values without touching the DOM — pure and unit-testable. */
 export function mapProductToFields(product: Product, settings: Settings): MappedValue[] {
   const values: MappedValue[] = [];
+
+  const price = product.plannedSalePrice;
+  if (price !== undefined && price !== null && price > 0) {
+    values.push({ field: 'price', label: 'Verkaufspreis', value: formatPriceForForm(price) });
+  }
 
   const title = product.listingTitle?.trim() || product.title;
   if (title) values.push({ field: 'title', label: 'Titel', value: title });
@@ -45,14 +64,19 @@ export function mapProductToFields(product: Product, settings: Settings): Mapped
   const description = product.listingDescription?.trim() || product.description;
   if (description) values.push({ field: 'description', label: 'Beschreibung', value: description });
 
-  const price = product.plannedSalePrice;
-  if (price !== undefined && price !== null && price > 0) {
-    // Austrian marketplaces expect a comma decimal separator.
-    values.push({
-      field: 'price',
-      label: 'Preis',
-      value: price.toFixed(2).replace('.', ','),
-    });
+  if (settings.onlyCoreFields) {
+    // Images stay in the list because they are the one manual step the user
+    // still needs the prepared values for.
+    const images = product.selectedImages.length ? product.selectedImages : product.images;
+    if (images.length) {
+      values.push({
+        field: 'images',
+        label: 'Bilder',
+        value: images.slice(0, settings.maxImages).join('\n'),
+        note: `${Math.min(images.length, settings.maxImages)} Bild(er) vorbereitet.`,
+      });
+    }
+    return values.filter((v) => CORE_FIELDS.includes(v.field) || v.field === 'images');
   }
 
   const category = mapCategory({
