@@ -30,7 +30,7 @@ Danach in Chrome:
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` (inkl. Verifikation) |
 | `npm run build:only` | Build ohne vorherigen Typecheck |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest-Suite (184 Tests) |
+| `npm test` | Vitest-Suite (187 Tests) |
 | `npm run test:watch` | Tests im Watch-Modus |
 | `npm run icons` | Icons neu generieren |
 | `npm run zip` | `dist/` als ZIP für den Web Store packen |
@@ -210,6 +210,16 @@ ein echter Satz folgt, und der Rest wird an einer Wortgrenze gekürzt. Der
 Wortlaut wird nie verändert, nur verkürzt. Über die Einstellung „Kurze
 Beschreibung" lässt sich die ausführliche Variante zurückholen.
 
+### Texte werden beim Vorbereiten neu erzeugt
+
+Titel und Beschreibung liegen am Produkt. Ein Produkt, das mit einer älteren
+Version importiert wurde, behielte sonst den damals erzeugten Text — verbesserte
+Regeln und geänderte Einstellungen hätten keine Wirkung. Deshalb werden die Texte
+bei jedem „Willhaben vorbereiten" neu erzeugt. Selbst geschriebener Text bleibt
+unangetastet: sobald die Beschreibung im Produktformular manuell bearbeitet wird
+(Häkchen „automatisch generieren" aus), gilt sie als `manual` und wird nie
+überschrieben.
+
 ### Nur deutscher Text
 
 Herstellertexte auf amazon.de sind häufig englisch oder nur teilweise übersetzt.
@@ -288,12 +298,15 @@ bevorzugt verwendet).
 ## Aktuelle technische Einschränkungen
 
 0. **Rich-Text-Beschreibung.** Das Beschreibungsfeld ist ein Editor, kein
-   `<textarea>`. Unterstützt werden `contenteditable`, `role="textbox"` sowie die
-   Marker von ProseMirror, Quill, Lexical, Slate und TinyMCE; geschrieben wird
-   über vier Wege (Editier-Kommando → synthetisches Einfügen → InputEvent →
-   direkte Zuweisung), jeder mit Rücklesen geprüft. Welchen Editor Willhaben
-   einsetzt, ist von außen nicht feststellbar — schlägt es fehl, zeigt der
-   Debug-Modus alle erkannten Bedienelemente samt Merkmalen an.
+   `<textarea>`. Unterstützt werden `contenteditable` (in jeder Ausprägung),
+   `role="textbox"`, die Marker von ProseMirror, Quill, Lexical, Slate und
+   TinyMCE sowie Editoren in einem **gleichnamigen iframe** (TinyMCE und
+   CKEditor classic arbeiten so — dort liegt die Beschriftung im Hauptdokument,
+   das Schreibziel im Frame). Geschrieben wird über vier Wege (Editier-Kommando →
+   synthetisches Einfügen → InputEvent → direkte Zuweisung), jeder mit Rücklesen
+   geprüft. Welchen Editor Willhaben tatsächlich einsetzt, ist von außen nicht
+   feststellbar — schlägt es fehl, listet der Assistent automatisch alle
+   erkannten Bedienelemente samt Merkmalen auf.
 
 1. **Bild-Upload ist manuell.** Ein `<input type="file">` lässt sich aus
    Sicherheitsgründen nicht programmatisch befüllen. Die Erweiterung bereitet die
@@ -350,7 +363,7 @@ bevorzugt verwendet).
 npm test
 ```
 
-184 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
+187 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
 Suchseiten), ASIN-/Preis-/Bild-Erkennung, Duplikaterkennung, Titel- und
 Beschreibungsgenerierung, Kategorie-Mapping, Preis- und Gewinnberechnung
 (inkl. Verlusten und Nullwerten), Storage inklusive gleichzeitiger Schreibzugriffe,

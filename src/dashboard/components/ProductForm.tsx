@@ -160,7 +160,12 @@ export function ProductForm({
       if (editing && product) {
         await ProductService.update(
           product.id,
-          { ...base, listingTitle: nextListingTitle, listingDescription: nextListingDescription },
+          {
+            ...base,
+            listingTitle: nextListingTitle,
+            listingDescription: nextListingDescription,
+            listingTextSource: regenerate ? 'auto' : 'manual',
+          },
           'Produkt bearbeitet',
         );
         onSaved?.(product.id);
@@ -170,6 +175,7 @@ export function ProductForm({
           source: 'manual',
           listingTitle: nextListingTitle,
           listingDescription: nextListingDescription,
+          listingTextSource: regenerate ? 'auto' : 'manual',
         });
         onSaved?.(created.id);
       }

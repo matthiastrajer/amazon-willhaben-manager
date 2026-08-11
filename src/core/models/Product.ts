@@ -157,6 +157,13 @@ export interface Product {
   soldAt?: string;
 
   source: 'amazon' | 'manual';
+  /**
+   * Whether listingTitle/listingDescription were generated or typed by the user.
+   * Generated text is refreshed when the product is prepared again, so improved
+   * generation rules and changed settings take effect; manual text is never
+   * overwritten.
+   */
+  listingTextSource?: 'auto' | 'manual';
   notes?: string;
   history: ProductHistoryEntry[];
 }

@@ -12,6 +12,7 @@ import {
   mapProductToFields,
   setControlValue,
 } from '@/content/willhaben/WillhabenFieldMapper';
+import { collectCandidates } from '@/content/willhaben/fieldDiscovery';
 import { DEFAULT_SETTINGS } from '@/core/models/Settings';
 import type { Product } from '@/core/models/Product';
 import { CREATE_FORM_URL, marktplatzForm } from './fixtures/willhabenForm';
@@ -343,5 +344,60 @@ describe('German-only ad copy', () => {
     );
     expect(text).not.toContain('home gym');
     expect(text).toContain('Zustand: Neu');
+  });
+});
+
+describe('editor inside an iframe', () => {
+  it('finds and fills an editable iframe body via the caption of its frame', async () => {
+    const dom = new JSDOM(
+      `<form>
+         <span>Verkaufspreis</span><input type="text">
+         <span>Titel</span><input type="text">
+         <span>Beschreibung</span><iframe id="editor"></iframe>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    );
+    const d = dom.window.document;
+    const frame = d.getElementById('editor') as HTMLIFrameElement;
+    // jsdom gives the frame a real document we can mark as editable.
+    frame.contentDocument!.body.setAttribute('contenteditable', 'true');
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Beschreibung im iframe.' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+
+    expect(results.find((r) => r.field === 'description')!.status).toBe('filled');
+    expect(frame.contentDocument!.body.textContent).toContain('Beschreibung im iframe');
+  });
+
+  it('ignores an iframe whose document is not editable', async () => {
+    const dom = new JSDOM(
+      `<form><span>Beschreibung</span><iframe id="ads"></iframe></form>`,
+      { url: CREATE_FORM_URL },
+    );
+    const d = dom.window.document;
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Text' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+    expect(results.find((r) => r.field === 'description')!.status).toBe('not-found');
+  });
+});
+
+describe('nested editable hosts', () => {
+  it('prefers the innermost editable node over its wrapper', () => {
+    const d = new JSDOM(
+      `<form><span>Beschreibung</span>
+         <div role="textbox"><div contenteditable="true" id="inner"></div></div>
+       </form>`,
+    ).window.document;
+
+    const candidates = collectCandidates(d);
+    // The wrapper must not appear as its own candidate.
+    expect(candidates.filter((c) => c.kind === 'textarea')).toHaveLength(1);
+    expect((candidates.find((c) => c.kind === 'textarea')!.element as HTMLElement).id).toBe('inner');
   });
 });

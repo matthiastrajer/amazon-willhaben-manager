@@ -110,7 +110,13 @@ async function runFill(pending: PendingListing): Promise<void> {
     results: result.fields,
     formDetected: result.formDetected,
     error: result.error,
-    debug: settings.debugMode ? describeControls() : undefined,
+    // Shown whenever something could not be filled, because that is exactly
+    // when it is needed — waiting for the user to find the debug setting first
+    // just hides the one piece of information that explains the failure.
+    debug:
+      settings.debugMode || result.fields.some((f) => f.status === 'not-found')
+        ? describeControls()
+        : undefined,
   });
 
   if (result.formDetected) {

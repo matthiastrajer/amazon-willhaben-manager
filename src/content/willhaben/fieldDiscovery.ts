@@ -215,11 +215,12 @@ function tokenizeAttribute(value: string): string {
   return normalizeKey(value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_\-.]+/g, ' '));
 }
 
-export function describeCandidate(el: FormControl | HTMLElement): Candidate | null {
-  const kind = kindOf(el);
-  if (!kind) return null;
-
-  const evidence = {
+/**
+ * Collects the identifying evidence for any element — including ones that are
+ * not controls themselves, such as the `<iframe>` that hosts an editor.
+ */
+export function buildEvidence(el: Element): Candidate['evidence'] {
+  return {
     label: normalizeKey(labelTextFor(el)),
     ariaLabel: normalizeKey(el.getAttribute('aria-label') ?? ''),
     caption: normalizeKey(captionText(el)),
@@ -241,7 +242,13 @@ export function describeCandidate(el: FormControl | HTMLElement): Candidate | nu
     ),
     nearby: normalizeKey(nearbyText(el)),
   };
+}
 
+export function describeCandidate(el: FormControl | HTMLElement): Candidate | null {
+  const kind = kindOf(el);
+  if (!kind) return null;
+
+  const evidence = buildEvidence(el);
   return {
     element: el,
     kind,
@@ -251,18 +258,72 @@ export function describeCandidate(el: FormControl | HTMLElement): Candidate | nu
   };
 }
 
-/** Every scoreable control in the document, visible ones first. */
+/**
+ * Editors that render inside an iframe (TinyMCE and CKEditor classic do).
+ *
+ * The editable body lives in the frame, but its caption lives in the host page,
+ * so the evidence is taken from the `<iframe>` element while the write target is
+ * the inner body. Cross-origin frames are silently skipped — the extension has
+ * no business reaching into those.
+ */
+function collectIframeEditors(doc: Document): Candidate[] {
+  const out: Candidate[] = [];
+  for (const frame of Array.from(doc.querySelectorAll('iframe'))) {
+    let inner: Document | null = null;
+    try {
+      inner = frame.contentDocument;
+    } catch {
+      continue; // cross-origin
+    }
+    if (!inner?.body) continue;
+
+    const editable =
+      inner.body.getAttribute('contenteditable') !== null || inner.designMode === 'on'
+        ? inner.body
+        : inner.querySelector<HTMLElement>('[contenteditable]:not([contenteditable="false"])');
+    if (!editable) continue;
+
+    // Evidence comes from the frame's position in the host page, because that is
+    // where the caption lives; the write target is the body inside the frame.
+    const evidence = buildEvidence(frame);
+    out.push({
+      element: editable,
+      kind: 'textarea',
+      evidence,
+      haystack: Object.values(evidence).filter(Boolean).join(' '),
+      visible: isVisible(frame),
+    });
+  }
+  return out;
+}
+
+/**
+ * Every scoreable control in the document.
+ *
+ * When an editor nests an editable node inside an editable wrapper (a
+ * `role="textbox"` around a `contenteditable`), only the innermost one is kept —
+ * otherwise the two would compete for the same field and the wrapper might win.
+ */
 export function collectCandidates(doc: Document | Element = document): Candidate[] {
   const nodes = Array.from(
     doc.querySelectorAll<FormControl | HTMLElement>(
       `input, textarea, select, ${EDITABLE_SELECTOR}`,
     ),
   );
+
   const candidates: Candidate[] = [];
   for (const node of nodes) {
+    // Skip an editable host that contains another collected editable host.
+    if (isEditableHost(node) && node.querySelector(EDITABLE_SELECTOR)) continue;
     const candidate = describeCandidate(node);
     if (candidate) candidates.push(candidate);
   }
+
+  // `iframe` is not a form control, so this only applies to a full Document.
+  if (typeof (doc as Document).querySelectorAll === 'function' && 'body' in doc) {
+    candidates.push(...collectIframeEditors(doc as Document));
+  }
+
   return candidates;
 }
 
