@@ -130,6 +130,69 @@ export function partialForm(): string {
 </body></html>`;
 }
 
+/**
+ * Reproduces the structure of the real "Marktplatz Anzeige aufgeben –
+ * Anzeigendetails" form as observed in the browser:
+ *
+ *  - captions are plain elements rendered BEFORE the field, not <label for>
+ *  - the price input sits next to a "€" prefix and a "zu verschenken" toggle
+ *  - the category is auto-suggested from the title, there is no category control
+ *  - the description is a rich-text editor (contenteditable + toolbar buttons)
+ *  - image upload is drag & drop with a hidden file input
+ */
+export function marktplatzForm(): string {
+  return `<!doctype html>
+<html lang="de"><body>
+  <div id="__next">
+    <h1>Marktplatz Anzeige aufgeben - Anzeigendetails</h1>
+    <form>
+      <div class="sc-a">
+        <div class="sc-b">
+          <span class="sc-c">Bilder per Drag &amp; Drop hinzufügen, oder</span>
+          <button type="button">Dateien durchsuchen</button>
+          <input type="file" accept="image/*" multiple hidden>
+        </div>
+        <p>Bilder unterstützen deine Interessent:innen dabei, sich dein Produkt besser vorstellen zu können.</p>
+      </div>
+
+      <div class="sc-d">
+        <span class="sc-e">Verkaufspreis</span>
+        <div class="sc-f">
+          <div class="sc-g"><span>€</span><input class="sc-h" type="text" inputmode="decimal"></div>
+          <div class="sc-i"><input type="checkbox" id="giveaway"><label for="giveaway">zu verschenken</label></div>
+        </div>
+      </div>
+
+      <div class="sc-j">
+        <span class="sc-e">Titel</span>
+        <input class="sc-k" type="text" placeholder="z.B. Levi's 501 Jeans, schwarz, Größe 32">
+        <p>Ein aussagekräftiger Titel hilft Suchenden deine Anzeige schneller zu finden.</p>
+      </div>
+
+      <div class="sc-l">
+        <span class="sc-e">Kategorie</span>
+        <p>Kategorien werden passend zu deinem Anzeigentitel vorgeschlagen.</p>
+        <a href="#">Andere Kategorie wählen</a>
+      </div>
+
+      <div class="sc-m">
+        <span class="sc-e">Beschreibung</span>
+        <div class="sc-n">
+          <div class="sc-toolbar">
+            <button type="button" aria-label="Fett">B</button>
+            <button type="button" aria-label="Kursiv">I</button>
+            <button type="button" aria-label="Liste">•</button>
+            <button type="button" aria-label="Nummerierte Liste">1.</button>
+          </div>
+          <div class="sc-o" contenteditable="true" role="textbox"
+               data-placeholder="z.B. Abmessungen, Größe, Gründe für den Verkauf, Mängel/Defekte falls vorhanden."></div>
+        </div>
+      </div>
+    </form>
+  </div>
+</body></html>`;
+}
+
 /** A page that is clearly not the ad-creation flow. */
 export function unrelatedPage(): string {
   return `<!doctype html>
@@ -148,4 +211,18 @@ export function unrelatedPage(): string {
 export const AD_DETAIL_URL =
   'https://www.willhaben.at/iad/kaufen-und-verkaufen/d/fitgriff-zughilfen-lifting-straps-1234567890/';
 
-export const CREATE_FORM_URL = 'https://www.willhaben.at/iad/anzeigeaufgeben';
+export const CREATE_FORM_URL =
+  'https://www.willhaben.at/iad/anzeigenaufgabe/marktplatz?adTypeId=67&productId=67';
+
+/** The chooser step that precedes the actual form. */
+export const CREATE_CHOOSER_URL = 'https://www.willhaben.at/iad/anzeigenaufgabe';
+
+/** The obsolete path that returns a 404 page. */
+export function notFoundPage(): string {
+  return `<!doctype html>
+<html lang="de"><head><title>Die Seite wurde nicht gefunden</title></head><body>
+  <h1>Die Seite wurde nicht gefunden</h1>
+  <p>Die Seite wurde entfernt oder die URL wurde erneuert.</p>
+  <a href="/">Bring mich zur Startseite!</a>
+</body></html>`;
+}

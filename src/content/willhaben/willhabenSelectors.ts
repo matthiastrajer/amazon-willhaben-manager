@@ -78,8 +78,9 @@ export const WILLHABEN_FIELDS: FieldProfile[] = [
     label: 'Beschreibung',
     kinds: ['textarea', 'text'],
     keywords: {
-      must: ['beschreibung', 'description', 'anzeigentext', 'details', 'text'],
-      nice: ['beschreibe', 'weitere informationen'],
+      // No bare "text": it matches far too much once caption text is scored.
+      must: ['beschreibung', 'description', 'anzeigentext'],
+      nice: ['beschreibe', 'weitere informationen', 'details'],
       never: ['kurzbeschreibung suche', 'suchbegriff'],
     },
     autoFillable: true,
@@ -106,7 +107,7 @@ export const WILLHABEN_FIELDS: FieldProfile[] = [
     },
     autoFillable: false,
     manualHint:
-      'Willhaben wählt die Kategorie über einen mehrstufigen Auswahl-Dialog. Die vorgeschlagene Kategorie bitte einmal manuell auswählen.',
+      'Willhaben schlägt die Kategorie automatisch anhand des Anzeigentitels vor. Bitte kurz prüfen und bei Bedarf über „Andere Kategorie wählen“ korrigieren.',
   },
   {
     id: 'condition',
@@ -196,7 +197,7 @@ export const WILLHABEN_FIELDS: FieldProfile[] = [
     },
     autoFillable: false,
     manualHint:
-      'Bilder müssen aus Sicherheitsgründen vom Browser selbst ausgewählt werden. Die Bild-URLs stehen unten zum Kopieren bereit.',
+      'Bilder müssen aus Sicherheitsgründen selbst ausgewählt werden (Drag & Drop oder „Dateien durchsuchen“). Die Bild-URLs stehen hier zum Kopieren bereit.',
   },
 ];
 
@@ -210,6 +211,7 @@ export function profileFor(id: WillhabenFieldId): FieldProfile | undefined {
  * stable than markup.
  */
 export const CREATE_FORM_URL_HINTS = [
+  '/anzeigenaufgabe',
   '/anzeigeaufgeben',
   '/iad/anzeige-aufgeben',
   '/anzeige-aufgeben',
@@ -221,7 +223,9 @@ export const CREATE_FORM_URL_HINTS = [
 export const CREATE_FORM_TEXT_HINTS = [
   'anzeige aufgeben',
   'anzeige erstellen',
+  'anzeigendetails',
   'kostenlos inserieren',
+  'kostenlose anzeige aufgeben',
   'was möchtest du verkaufen',
   'was moechtest du verkaufen',
   'neue anzeige',

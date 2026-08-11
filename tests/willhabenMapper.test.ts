@@ -18,9 +18,12 @@ import type { Product } from '@/core/models/Product';
 import {
   AD_DETAIL_URL,
   CREATE_FORM_URL,
+  CREATE_CHOOSER_URL,
   ariaForm,
   frameworkForm,
   labelledForm,
+  marktplatzForm,
+  notFoundPage,
   partialForm,
   unrelatedPage,
 } from './fixtures/willhabenForm';
@@ -278,5 +281,68 @@ describe('setControlValue', () => {
   it('reports failure when a select has no matching option', () => {
     const d = new JSDOM('<select id="s"><option value="a">A</option></select>').window.document;
     expect(setControlValue(d.getElementById('s')!, 'Zzz')).toBe(false);
+  });
+});
+
+describe('real Willhaben Marktplatz form layout', () => {
+  it('detects the form even though it has no <label for> elements', () => {
+    const result = detectWillhabenPage(doc(marktplatzForm()), CREATE_FORM_URL);
+    expect(result.isCreateFlow).toBe(true);
+    expect(result.formReady).toBe(true);
+  });
+
+  it('finds title, price and description via their visible captions', () => {
+    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(doc(marktplatzForm())));
+    expect(found.has('title')).toBe(true);
+    expect(found.has('price')).toBe(true);
+    expect(found.has('description')).toBe(true);
+    expect(found.get('price')!.matchedBy).toBe('caption');
+  });
+
+  it('does not mistake the "zu verschenken" toggle for the price field', () => {
+    const d = doc(marktplatzForm());
+    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(d));
+    const priceEl = found.get('price')!.candidate.element as HTMLInputElement;
+    expect(priceEl.type).toBe('text');
+    expect(priceEl.id).not.toBe('giveaway');
+  });
+
+  it('fills the real form layout end to end', () => {
+    const d = doc(marktplatzForm());
+    const results = fillWillhabenForm(product(), settings, { doc: d });
+
+    const title = d.querySelector('input[placeholder^="z.B. Levi"]') as HTMLInputElement;
+    const price = d.querySelector('.sc-h') as HTMLInputElement;
+    const description = d.querySelector('[contenteditable="true"]') as HTMLElement;
+
+    expect(title.value).toBe('Fitgriff Zughilfen / Lifting Straps – Neu');
+    expect(price.value).toBe('19,99');
+    expect(description.textContent).toContain('Fitgriff');
+    expect(results.find((r) => r.field === 'description')!.status).toBe('filled');
+  });
+
+  it('reports the category as manual, since Willhaben derives it from the title', () => {
+    const results = fillWillhabenForm(product(), settings, { doc: doc(marktplatzForm()) });
+    const category = results.find((r) => r.field === 'category')!;
+    expect(category.status).toBe('manual');
+    expect(category.reason).toMatch(/Anzeigentitel/);
+  });
+
+  it('treats the hidden file input as a manual step', () => {
+    const results = fillWillhabenForm(product(), settings, { doc: doc(marktplatzForm()) });
+    expect(results.find((r) => r.field === 'images')!.status).toBe('manual');
+  });
+
+  it('does not consider the 404 page an ad form', () => {
+    const d = new JSDOM(notFoundPage(), { url: 'https://www.willhaben.at/iad/anzeigeaufgeben' })
+      .window.document;
+    expect(detectWillhabenPage(d, 'https://www.willhaben.at/iad/anzeigeaufgeben').formReady).toBe(false);
+  });
+
+  it('does not consider the chooser step an ad form', () => {
+    const html = `<h1>Neue Anzeige aufgeben</h1>
+      <div><h2>Marktplatz</h2><button type="button">Kostenlose Anzeige aufgeben</button></div>`;
+    const d = new JSDOM(html, { url: CREATE_CHOOSER_URL }).window.document;
+    expect(detectWillhabenPage(d, CREATE_CHOOSER_URL).formReady).toBe(false);
   });
 });

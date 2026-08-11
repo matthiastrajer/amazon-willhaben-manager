@@ -7,7 +7,7 @@ import { ListingService } from '@/core/services/ListingService';
 import type { PendingListing } from '@/shared/types';
 import type { WillhabenFieldId } from './willhabenSelectors';
 import { WillhabenAdapter } from './WillhabenAdapter';
-import { detectWillhabenPage, isAdDetailPage } from './willhabenDetector';
+import { detectWillhabenPage, isAdDetailPage, waitForForm } from './willhabenDetector';
 import { AssistPanel, pickElement, selectorFor } from './assistPanel';
 
 /**
@@ -42,6 +42,17 @@ async function saveHint(field: string, selector: string): Promise<void> {
   }));
 }
 
+/**
+ * True when the current page is an error page rather than the ad form. Worth
+ * detecting separately: it means the configured entry URL is wrong, which the
+ * user can fix directly, instead of the form merely being slow.
+ */
+function looksLikeErrorPage(): boolean {
+  const heading = (document.querySelector('h1, h2')?.textContent ?? '').toLowerCase();
+  const title = document.title.toLowerCase();
+  return /seite wurde nicht gefunden|nicht gefunden|404|page not found/.test(`${heading} ${title}`);
+}
+
 async function runFill(pending: PendingListing): Promise<void> {
   const settings = await SettingsService.get();
   const adapter = new WillhabenAdapter(settings, document);
@@ -51,9 +62,30 @@ async function runFill(pending: PendingListing): Promise<void> {
   // if the user edited the product after preparing it.
   const product = (await ProductService.byId(pending.productId)) ?? pending.product;
 
+  if (looksLikeErrorPage()) {
+    ensurePanel();
+    panel!.render({
+      product,
+      results: [],
+      formDetected: false,
+      error:
+        'Diese Willhaben-Seite existiert nicht (Fehler 404). Die in den Einstellungen hinterlegte Adresse für neue Anzeigen ist veraltet. Klicke auf Willhaben oben rechts auf „Neue Anzeige aufgeben“ und trage die Adresse aus der Adresszeile in den Einstellungen ein – oder navigiere einfach zum Formular, die Werte werden dann automatisch übernommen.',
+    });
+    return;
+  }
+
+  // Show the panel before waiting for the form, so a slow-rendering page does
+  // not leave the user staring at nothing.
+  ensurePanel();
+  panel!.render({
+    product,
+    results: [],
+    formDetected: false,
+    error: 'Das Anzeigen-Formular wird gesucht …',
+  });
+
   const result = await adapter.prepareListing(product, { hints });
 
-  ensurePanel();
   panel!.render({
     product,
     results: result.fields,
@@ -188,17 +220,76 @@ async function captureListingUrl(): Promise<void> {
   await ProductService.addHistory(product.id, 'Willhaben-URL automatisch erkannt', location.href);
 }
 
-void (async () => {
-  const pending = await readPending();
-  await captureListingUrl();
+/** A hand-off is only acted upon for half an hour after it was created. */
+function isFresh(pending: PendingListing): boolean {
+  return Date.now() - new Date(pending.createdAt).getTime() < 30 * 60 * 1000;
+}
 
+/**
+ * Decides whether to fill right now, and does so.
+ *
+ * Called on load and again whenever the SPA navigates, because reaching the ad
+ * form by clicking "Neue Anzeige aufgeben" replaces the view without ever
+ * loading a new document — a load-only check would simply never fire.
+ *
+ * `announce` distinguishes the two situations: on a page the user was sent to
+ * on purpose, a failure has to be visible; after an incidental in-app
+ * navigation it must stay quiet unless the form actually shows up.
+ */
+async function maybeFill(announce: boolean): Promise<void> {
+  const pending = await readPending();
   if (!pending) return;
   currentPending = pending;
 
-  // Only auto-fill on the creation flow and only for a fresh hand-off.
-  const detection = detectWillhabenPage(document);
-  const fresh = Date.now() - new Date(pending.createdAt).getTime() < 30 * 60 * 1000;
-  if (detection.isCreateFlow && fresh && !pending.consumedAt) {
+  if (!isFresh(pending) || pending.consumedAt) return;
+
+  if (announce && detectWillhabenPage(document).isCreateFlow) {
     await runFill(pending);
+    return;
   }
+
+  // The route may not look like the ad flow (and the form may still be
+  // rendering), so wait a little and only act once the fields really exist.
+  const detection = await waitForForm({ timeoutMs: 8000 });
+  if (detection.formReady) await runFill(pending);
+}
+
+/**
+ * Watches for client-side navigation. History methods are patched because
+ * `popstate` alone does not fire for pushState/replaceState, which is how a
+ * framework router moves between views.
+ */
+function watchSpaNavigation(onChange: () => void): void {
+  let lastUrl = location.href;
+
+  const check = () => {
+    if (location.href === lastUrl) return;
+    lastUrl = location.href;
+    onChange();
+  };
+
+  for (const method of ['pushState', 'replaceState'] as const) {
+    const original = history[method];
+    history[method] = function patched(this: History, ...args: never[]) {
+      const result = (original as (...a: never[]) => unknown).apply(this, args);
+      // Let the router finish rendering before re-evaluating the DOM.
+      setTimeout(check, 0);
+      return result;
+    } as typeof original;
+  }
+
+  window.addEventListener('popstate', () => setTimeout(check, 0));
+  window.addEventListener('hashchange', () => setTimeout(check, 0));
+}
+
+void (async () => {
+  await captureListingUrl();
+  await maybeFill(true);
+
+  watchSpaNavigation(() => {
+    void (async () => {
+      await captureListingUrl();
+      await maybeFill(false);
+    })();
+  });
 })();

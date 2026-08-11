@@ -149,13 +149,45 @@ export function setControlValue(el: HTMLElement, value: string): boolean {
   }
 
   if (el.getAttribute('contenteditable') === 'true') {
-    el.focus();
-    el.textContent = value;
-    el.dispatchEvent(new win.Event('input', { bubbles: true }));
-    return el.textContent === value;
+    return setRichTextValue(el, value);
   }
 
   return false;
+}
+
+/**
+ * Writes into a rich-text editor (the description field is one).
+ *
+ * Assigning `textContent` is not enough: editors like ProseMirror/Slate keep
+ * their own document model and overwrite the DOM on the next render. Selecting
+ * the existing content and inserting text through the editing command pipeline
+ * produces real beforeinput/input events, which is what the editor listens to.
+ */
+function setRichTextValue(el: HTMLElement, value: string): boolean {
+  const doc = el.ownerDocument;
+  const win = doc.defaultView ?? window;
+
+  el.focus();
+
+  try {
+    const range = doc.createRange();
+    range.selectNodeContents(el);
+    const selection = win.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // execCommand is deprecated but remains the only widely supported way to
+    // drive an editor's own input handling from the outside.
+    const inserted = doc.execCommand?.('insertText', false, value);
+    if (inserted && normalizeKey(el.textContent ?? '').length > 0) return true;
+  } catch {
+    // Not available (e.g. jsdom) — fall through to the direct assignment.
+  }
+
+  el.textContent = value;
+  el.dispatchEvent(new win.Event('input', { bubbles: true }));
+  el.dispatchEvent(new win.Event('change', { bubbles: true }));
+  return (el.textContent ?? '').includes(value.slice(0, 20));
 }
 
 /** Checkbox/radio handling: a truthy value ticks the box. */
@@ -278,7 +310,7 @@ function describeManually(el: HTMLElement): Candidate | null {
     element: el,
     kind: kind as Candidate['kind'],
     evidence: {
-      label: '', ariaLabel: '', placeholder: '', name: '', id: '', testId: '', nearby: '',
+      label: '', ariaLabel: '', caption: '', placeholder: '', name: '', id: '', testId: '', nearby: '',
     },
     haystack: '',
     visible: true,

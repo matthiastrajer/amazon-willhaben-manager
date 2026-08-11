@@ -73,7 +73,8 @@ export const DEFAULT_SETTINGS: Settings = {
   currency: 'EUR',
   locale: 'de-AT',
 
-  willhabenCreateUrl: 'https://www.willhaben.at/iad/anzeigeaufgeben',
+  willhabenCreateUrl:
+    'https://www.willhaben.at/iad/anzeigenaufgabe/marktplatz?adTypeId=67&productId=67',
 
   defaultPlatform: 'willhaben',
 };

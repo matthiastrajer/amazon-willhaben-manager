@@ -1,4 +1,4 @@
-import { normalizeKey, normalizeWhitespace } from '@/core/utils/text';
+import { normalizeKey, normalizeWhitespace, tokenize } from '@/core/utils/text';
 import type { ControlKind, FieldProfile, WillhabenFieldId } from './willhabenSelectors';
 
 /**
@@ -23,6 +23,8 @@ export interface Candidate {
   evidence: {
     label: string;
     ariaLabel: string;
+    /** Visible caption rendered before the field rather than as a <label>. */
+    caption: string;
     placeholder: string;
     name: string;
     id: string;
@@ -135,12 +137,43 @@ function nearbyText(el: Element): string {
   let node: Element | null = el.parentElement;
   let depth = 0;
   while (node && depth < 4) {
-    const controls = node.querySelectorAll('input, select, textarea, [contenteditable="true"]');
+    const controls = node.querySelectorAll(CONTROL_QUERY);
     if (controls.length > 1) break;
     const text = normalizeWhitespace(node.textContent ?? '');
     if (text.length > 0 && text.length < 200) return text;
     node = node.parentElement;
     depth++;
+  }
+  return '';
+}
+
+const CONTROL_QUERY = 'input, select, textarea, [contenteditable="true"]';
+
+/**
+ * The visible caption of a field when the form does not use a real <label>.
+ *
+ * Such forms render the caption as an element *before* the field's container
+ * ("Verkaufspreis", then the input box). Walking up the ancestors and taking the
+ * nearest preceding sibling that carries short text and contains no control of
+ * its own finds exactly that caption — and, unlike surrounding-text matching, it
+ * does not get confused by adjacent controls such as a "zu verschenken" toggle.
+ */
+function captionText(el: Element): string {
+  let node: Element | null = el;
+  for (let depth = 0; node && depth < 5; depth++) {
+    let sibling = node.previousElementSibling;
+    while (sibling) {
+      if (!sibling.querySelector(CONTROL_QUERY) && !sibling.matches(CONTROL_QUERY)) {
+        const text = normalizeWhitespace(sibling.textContent ?? '');
+        // Captions are short; a paragraph of help text is not a caption. And a
+        // caption has to contain an actual word: the "€" prefix before the price
+        // input and the "B / I / • / 1." toolbar above the rich-text editor are
+        // siblings too, and neither identifies anything — skip and look further.
+        if (text && text.length <= 60 && tokenize(text, 3).length > 0) return text;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+    node = node.parentElement;
   }
   return '';
 }
@@ -157,7 +190,14 @@ export function describeCandidate(el: FormControl | HTMLElement): Candidate | nu
   const evidence = {
     label: normalizeKey(labelTextFor(el)),
     ariaLabel: normalizeKey(el.getAttribute('aria-label') ?? ''),
-    placeholder: normalizeKey(el.getAttribute('placeholder') ?? ''),
+    caption: normalizeKey(captionText(el)),
+    // Rich-text editors have no `placeholder` attribute and use data-/aria- ones.
+    placeholder: normalizeKey(
+      el.getAttribute('placeholder') ??
+        el.getAttribute('data-placeholder') ??
+        el.getAttribute('aria-placeholder') ??
+        '',
+    ),
     name: tokenizeAttribute(el.getAttribute('name') ?? ''),
     id: tokenizeAttribute(el.getAttribute('id') ?? ''),
     testId: tokenizeAttribute(
@@ -202,6 +242,9 @@ export function collectCandidates(doc: Document | Element = document): Candidate
 const EVIDENCE_WEIGHTS: Record<keyof Candidate['evidence'], number> = {
   label: 10,
   ariaLabel: 9,
+  // A visible caption directly before the field is nearly as reliable as a
+  // real <label>, and it is how Willhaben's ad form is actually built.
+  caption: 8,
   testId: 7,
   name: 6,
   id: 5,
@@ -212,21 +255,46 @@ const EVIDENCE_WEIGHTS: Record<keyof Candidate['evidence'], number> = {
 /** Score below which a match is discarded and the field is reported as manual. */
 export const MIN_SCORE = 6;
 
+/**
+ * Positive match. Substring matching is deliberate: German compounds mean the
+ * caption "Verkaufspreis" has to satisfy the keyword "preis".
+ */
 function keywordHit(haystack: string, keyword: string): boolean {
   if (!haystack || !keyword) return false;
-  // Word-boundary-ish match on the normalised (space separated) text.
-  return haystack === keyword || haystack.includes(` ${keyword} `) ||
-    haystack.startsWith(`${keyword} `) || haystack.endsWith(` ${keyword}`) ||
-    haystack.includes(keyword);
+  return haystack.includes(keyword);
 }
+
+/**
+ * Negative match — strictly whole-token, and never applied to loose surrounding
+ * text. Substring matching here is actively harmful: the help sentence "hilft
+ * Suchenden deine Anzeige zu finden" sits next to the real title field and would
+ * otherwise disqualify it via the exclusion keyword "suchen".
+ */
+function exclusionHit(haystack: string, keyword: string): boolean {
+  if (!haystack || !keyword) return false;
+  return ` ${haystack} `.includes(` ${keyword} `);
+}
+
+/** Evidence authored to identify the field; excludes noisy ambient text. */
+const AUTHORED_EVIDENCE: (keyof Candidate['evidence'])[] = [
+  'label',
+  'ariaLabel',
+  'caption',
+  'placeholder',
+  'name',
+  'id',
+  'testId',
+];
 
 export function scoreCandidate(candidate: Candidate, profile: FieldProfile): FieldMatch | null {
   if (!profile.kinds.includes(candidate.kind)) return null;
   if (!candidate.visible) return null;
 
-  const never = profile.keywords.never ?? [];
-  for (const bad of never) {
-    if (keywordHit(candidate.haystack, normalizeKey(bad))) return null;
+  for (const bad of profile.keywords.never ?? []) {
+    const keyword = normalizeKey(bad);
+    for (const source of AUTHORED_EVIDENCE) {
+      if (exclusionHit(candidate.evidence[source], keyword)) return null;
+    }
   }
 
   let score = 0;

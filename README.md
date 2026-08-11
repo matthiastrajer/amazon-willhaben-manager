@@ -30,7 +30,7 @@ Danach in Chrome:
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` (inkl. Verifikation) |
 | `npm run build:only` | Build ohne vorherigen Typecheck |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest-Suite (147 Tests) |
+| `npm test` | Vitest-Suite (155 Tests) |
 | `npm run test:watch` | Tests im Watch-Modus |
 | `npm run icons` | Icons neu generieren |
 | `npm run zip` | `dist/` als ZIP für den Web Store packen |
@@ -181,18 +181,33 @@ vom Styling trägt:
 | --- | --- |
 | `<label for>` -Text | 10 |
 | `aria-label` / `aria-labelledby` | 9 |
+| sichtbare Beschriftung **vor** dem Feld | 8 |
 | `data-testid` | 7 |
 | `name` | 6 |
-| `id`, `placeholder` | 5 |
+| `id`, `placeholder` (auch `data-placeholder`) | 5 |
 | umgebender Text | 3 |
+
+Die Beschriftungs-Erkennung ist der wichtigste Teil, weil Willhaben genau so
+aufgebaut ist: „Verkaufspreis", „Titel", „Beschreibung" stehen als eigene
+Elemente vor dem jeweiligen Feld. Gesucht wird der nächste vorangehende
+Geschwisterknoten, der kurzen Text mit mindestens einem echten Wort enthält und
+selbst kein Bedienelement umfasst — dadurch werden das „€"-Präfix, die
+Formatierungsleiste des Editors und der „zu verschenken"-Schalter übersprungen.
 
 Dazu kommen Ausschluss-Stichwörter (ein Suchfeld „Preis von" wird nie als
 Preisfeld gewertet), Element-Art-Prüfungen und eine Mindestpunktzahl. Ein
 Bedienelement wird nie zwei Feldern zugeordnet.
 
-Die Testsuite prüft dieselbe Logik gegen **vier** unterschiedlich aufgebaute
-Formular-Varianten (klassische Labels, nur `aria-label`, Framework-Markup mit
-generierten Klassen, unvollständiges Formular).
+Wichtig für die Ausschlusslogik: positive Stichwörter matchen als Teilwort
+(deutsche Komposita — „Verkaufspreis" muss „preis" erfüllen), Ausschluss-Wörter
+dagegen nur als ganzes Wort und nur in *ausgezeichneter* Evidenz. Sonst würde
+der Hilfetext „hilft **Suchenden** deine Anzeige zu finden" neben dem echten
+Titelfeld dieses über das Ausschlusswort „suchen" disqualifizieren.
+
+Die Testsuite prüft dieselbe Logik gegen **fünf** unterschiedlich aufgebaute
+Formular-Varianten: klassische Labels, nur `aria-label`, Framework-Markup mit
+generierten Klassen, unvollständiges Formular — und `marktplatzForm`, das die
+Struktur der echten Willhaben-Seite nachbildet.
 
 Findet die Erkennung ein Feld trotzdem nicht, wird das im Assistenten klar
 angezeigt — mit Kopierschaltfläche und der Möglichkeit, das richtige Feld per
@@ -224,14 +239,25 @@ bevorzugt verwendet).
    ein mehrstufiger Dialog. Die Erweiterung mappt die Amazon-Kategorie über
    `categoryMappings.ts` und zeigt den Pfad an; ausgewählt wird er einmal manuell.
 
-3. **Die Willhaben-Feldprofile wurden nicht gegen die Live-Seite verifiziert.**
-   Amazon und Willhaben waren in der Entwicklungsumgebung netzwerkseitig nicht
-   erreichbar, eine Live-DOM-Analyse war daher nicht möglich. Statt Selektoren zu
-   erfinden, arbeitet die Erkennung rein semantisch (siehe oben) und meldet
-   ehrlich, wenn ein Feld nicht gefunden wurde. Die Amazon-Selektoren zielen auf
-   die langlebigen Element-IDs (`#productTitle`, `#landingImage`, `#ASIN`,
-   `#feature-bullets`, …) und liegen ohnehin hinter JSON-LD und Meta-Tags als
-   bevorzugten Quellen.
+3. **Die Amazon-Selektoren wurden nicht gegen die Live-Seite verifiziert.**
+   Amazon war in der Entwicklungsumgebung netzwerkseitig nicht erreichbar. Die
+   Selektoren zielen auf die langlebigen Element-IDs (`#productTitle`,
+   `#landingImage`, `#ASIN`, `#feature-bullets`, …) und liegen ohnehin hinter
+   JSON-LD und Meta-Tags als bevorzugten Quellen.
+
+   Das Willhaben-Formular („Marktplatz Anzeige aufgeben – Anzeigendetails") wurde
+   inzwischen anhand der echten Seite nachgezogen: Die Beschriftungen stehen dort
+   als eigene Elemente **vor** dem Feld (kein `<label for>`), der Preis hat ein
+   „€"-Präfix und einen „zu verschenken"-Schalter daneben, die Kategorie wird von
+   Willhaben selbst aus dem Titel vorgeschlagen, und die Beschreibung ist ein
+   `contenteditable`-Editor mit Formatierungsleiste. `tests/fixtures/willhabenForm.ts`
+   enthält diese Struktur als Fixture (`marktplatzForm`), die Erkennung ist dagegen
+   getestet.
+
+   Die Einstiegs-URL kann sich ändern — sie ist deshalb in den Einstellungen
+   hinterlegt (`willhabenCreateUrl`). Läuft sie ins Leere, erkennt die Erweiterung
+   die 404-Seite und sagt konkret, was zu tun ist; navigierst du selbst zum
+   Formular, greift die Übernahme trotzdem (auch bei clientseitiger Navigation).
 
 4. **Amazon-Preise sind Momentaufnahmen.** Der beim Import gelesene Preis wird als
    Einkaufspreis vorgeschlagen und kann jederzeit korrigiert werden.
@@ -259,7 +285,7 @@ bevorzugt verwendet).
 npm test
 ```
 
-147 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
+155 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
 Suchseiten), ASIN-/Preis-/Bild-Erkennung, Duplikaterkennung, Titel- und
 Beschreibungsgenerierung, Kategorie-Mapping, Preis- und Gewinnberechnung
 (inkl. Verlusten und Nullwerten), Storage inklusive gleichzeitiger Schreibzugriffe,
