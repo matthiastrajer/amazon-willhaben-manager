@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "Amazon → Willhaben Manager",
+  "version": "1.0.0",
+  "description": "Amazon-Produkte analysieren, Willhaben-Anzeigen vorbereiten und Reselling verwalten: Bestand, Listings, Verkäufe, Gewinn, Marge, ROI.",
+  "minimum_chrome_version": "110",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Amazon → Willhaben Manager",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "contextMenus"],
+  "host_permissions": [
+    "https://www.amazon.de/*",
+    "https://www.amazon.at/*",
+    "https://www.amazon.com/*",
+    "https://www.willhaben.at/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.amazon.de/*",
+        "https://www.amazon.at/*",
+        "https://www.amazon.com/*"
+      ],
+      "js": ["content-amazon.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://www.willhaben.at/*"],
+      "js": ["content-willhaben.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/dashboard/index.html", "icons/*"],
+      "matches": [
+        "https://www.amazon.de/*",
+        "https://www.amazon.at/*",
+        "https://www.amazon.com/*",
+        "https://www.willhaben.at/*"
+      ]
+    }
+  ]
+}
