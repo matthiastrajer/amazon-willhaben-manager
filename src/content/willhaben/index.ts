@@ -62,14 +62,36 @@ function looksLikeErrorPage(): boolean {
  * evidence the discovery engine had to work with.
  */
 function describeControls(): string[] {
-  return collectCandidates(document).map((c, i) => {
-    const evidence = Object.entries(c.evidence)
-      .filter(([, v]) => v)
-      .map(([k, v]) => `${k}="${v.slice(0, 40)}"`)
-      .join(' ');
-    const tag = c.element.tagName.toLowerCase();
-    return `${i + 1}. <${tag}> kind=${c.kind} visible=${c.visible} ${evidence || '(keine Merkmale)'}`;
-  });
+  const candidates = collectCandidates(document);
+
+  // Structural context first: it explains an empty list, which is the case that
+  // is otherwise impossible to interpret from the outside.
+  const shadowHosts = Array.from(document.querySelectorAll('*')).filter(
+    (el) => (el as HTMLElement).shadowRoot,
+  ).length;
+  const frames = document.querySelectorAll('iframe').length;
+  const editables = document.querySelectorAll('[contenteditable], [role="textbox"]').length;
+
+  const lines = [
+    `Seite: ${location.pathname}`,
+    `Bedienelemente: ${candidates.length} · contenteditable/textbox: ${editables} · iframes: ${frames} · Shadow-Roots: ${shadowHosts}`,
+    '',
+  ];
+
+  lines.push(
+    ...candidates.map((c, i) => {
+      const evidence = Object.entries(c.evidence)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k}="${v.slice(0, 40)}"`)
+        .join(' ');
+      const tag = c.element.tagName.toLowerCase();
+      return `${i + 1}. <${tag}> kind=${c.kind} sichtbar=${c.visible} ${evidence || '(keine Merkmale)'}`;
+    }),
+  );
+
+  // Also logged, so the diagnosis survives the panel being closed.
+  console.info('[Amazon → Willhaben] Feld-Diagnose:\n%s', lines.join('\n'));
+  return lines;
 }
 
 async function runFill(pending: PendingListing): Promise<void> {

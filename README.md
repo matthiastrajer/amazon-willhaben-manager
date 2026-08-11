@@ -30,7 +30,7 @@ Danach in Chrome:
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` (inkl. Verifikation) |
 | `npm run build:only` | Build ohne vorherigen Typecheck |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest-Suite (187 Tests) |
+| `npm test` | Vitest-Suite (191 Tests) |
 | `npm run test:watch` | Tests im Watch-Modus |
 | `npm run icons` | Icons neu generieren |
 | `npm run zip` | `dist/` als ZIP für den Web Store packen |
@@ -276,6 +276,20 @@ Formular-Varianten: klassische Labels, nur `aria-label`, Framework-Markup mit
 generierten Klassen, unvollständiges Formular — und `marktplatzForm`, das die
 Struktur der echten Willhaben-Seite nachbildet.
 
+### Rückfallebene für die Beschreibung
+
+Ein Rich-Text-Editor kann *überhaupt keine* verwertbaren Merkmale tragen: kein
+Label, kein aria-Attribut, generierte Wrapper, und die Beschriftung steht nicht
+als Geschwisterknoten. Gesucht wird deshalb zusätzlich in **offenen Shadow-Roots**
+und **gleichnamigen iframes**, und die Beschriftungssuche überschreitet die
+Shadow-Grenze zum Host-Element.
+
+Bleibt das Feld trotzdem unerkannt, greift eine Deduktion statt einer Vermutung:
+Ein Anzeigenformular hat genau **einen** mehrzeiligen Editor. Ist die Beschreibung
+nicht zugeordnet und bleibt **genau ein** unbenutzter Editor übrig, kann es nur
+dieser sein. Bei null oder mehreren freien Editoren wird nichts zugeordnet und
+das Feld ehrlich als „nicht gefunden" gemeldet. Suchfelder sind ausgeschlossen.
+
 Findet die Erkennung ein Feld trotzdem nicht, wird das im Assistenten klar
 angezeigt — mit Kopierschaltfläche und der Möglichkeit, das richtige Feld per
 Klick **selbst zuzuordnen** (die Zuordnung wird lokal gespeichert und danach
@@ -363,7 +377,7 @@ bevorzugt verwendet).
 npm test
 ```
 
-187 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
+191 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
 Suchseiten), ASIN-/Preis-/Bild-Erkennung, Duplikaterkennung, Titel- und
 Beschreibungsgenerierung, Kategorie-Mapping, Preis- und Gewinnberechnung
 (inkl. Verlusten und Nullwerten), Storage inklusive gleichzeitiger Schreibzugriffe,

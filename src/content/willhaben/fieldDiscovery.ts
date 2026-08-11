@@ -191,6 +191,17 @@ const CONTROL_QUERY = [
  * does not get confused by adjacent controls such as a "zu verschenken" toggle.
  */
 function captionText(el: Element): string {
+  const direct = captionFrom(el);
+  if (direct) return direct;
+
+  // The field may live in a shadow tree while its caption sits in the host
+  // document, so continue the search from the shadow host.
+  const root = el.getRootNode?.();
+  const host = root && 'host' in root ? ((root as ShadowRoot).host as Element | null) : null;
+  return host ? captionFrom(host) : '';
+}
+
+function captionFrom(el: Element): string {
   let node: Element | null = el;
   for (let depth = 0; node && depth < 5; depth++) {
     let sibling = node.previousElementSibling;
@@ -297,31 +308,51 @@ function collectIframeEditors(doc: Document): Candidate[] {
   return out;
 }
 
+type SearchRoot = Document | ShadowRoot | Element;
+
 /**
- * Every scoreable control in the document.
+ * Every root worth searching: the document plus every open shadow root nested
+ * inside it. Web components hide their internals in a shadow tree, and a plain
+ * `document.querySelectorAll` never sees through one.
+ */
+function* searchRoots(root: SearchRoot, depth = 0): Generator<SearchRoot> {
+  yield root;
+  if (depth > 6) return; // guard against pathological nesting
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    const shadow = (el as HTMLElement).shadowRoot;
+    if (shadow) yield* searchRoots(shadow, depth + 1);
+  }
+}
+
+/**
+ * Every scoreable control, including ones inside open shadow roots and
+ * same-origin iframes.
  *
  * When an editor nests an editable node inside an editable wrapper (a
  * `role="textbox"` around a `contenteditable`), only the innermost one is kept —
  * otherwise the two would compete for the same field and the wrapper might win.
  */
-export function collectCandidates(doc: Document | Element = document): Candidate[] {
-  const nodes = Array.from(
-    doc.querySelectorAll<FormControl | HTMLElement>(
-      `input, textarea, select, ${EDITABLE_SELECTOR}`,
-    ),
-  );
-
+export function collectCandidates(doc: SearchRoot = document): Candidate[] {
   const candidates: Candidate[] = [];
-  for (const node of nodes) {
-    // Skip an editable host that contains another collected editable host.
-    if (isEditableHost(node) && node.querySelector(EDITABLE_SELECTOR)) continue;
-    const candidate = describeCandidate(node);
-    if (candidate) candidates.push(candidate);
-  }
+  const seen = new Set<Element>();
 
-  // `iframe` is not a form control, so this only applies to a full Document.
-  if (typeof (doc as Document).querySelectorAll === 'function' && 'body' in doc) {
-    candidates.push(...collectIframeEditors(doc as Document));
+  for (const root of searchRoots(doc)) {
+    const nodes = Array.from(
+      root.querySelectorAll<FormControl | HTMLElement>(
+        `input, textarea, select, ${EDITABLE_SELECTOR}`,
+      ),
+    );
+    for (const node of nodes) {
+      if (seen.has(node)) continue;
+      // Skip an editable host that contains another collected editable host.
+      if (isEditableHost(node) && node.querySelector(EDITABLE_SELECTOR)) continue;
+      seen.add(node);
+      const candidate = describeCandidate(node);
+      if (candidate) candidates.push(candidate);
+    }
+
+    // `iframe` is not a form control, so this only applies to full documents.
+    if ('body' in root) candidates.push(...collectIframeEditors(root as Document));
   }
 
   return candidates;
@@ -459,5 +490,52 @@ export function discoverFields(
     usedElements.add(match.candidate.element);
   }
 
+  applyUniqueEditorFallback(profiles, candidates, result, usedElements);
+
   return result;
+}
+
+/**
+ * Last resort for the description field.
+ *
+ * A rich-text editor can carry no usable evidence at all — no label, no aria
+ * attribute, a caption that is not a sibling, a generated wrapper. But an ad form
+ * has exactly one multi-line editor, so when the description is unmatched and
+ * precisely one unassigned editor remains, it can only be that one. This is a
+ * deduction from the page's structure rather than a guess about its markup.
+ *
+ * It stays deliberately strict: with zero or several free editors nothing is
+ * assigned, and the field is honestly reported as not found.
+ */
+function applyUniqueEditorFallback(
+  profiles: FieldProfile[],
+  candidates: Candidate[],
+  result: Map<WillhabenFieldId, FieldMatch>,
+  usedElements: Set<Element>,
+): void {
+  const wantsDescription = profiles.some((p) => p.id === 'description');
+  if (!wantsDescription || result.has('description')) return;
+
+  const profile = profiles.find((p) => p.id === 'description')!;
+  const free = candidates.filter((c) => {
+    if (c.kind !== 'textarea' || !c.visible) return false;
+    if (usedElements.has(c.element)) return false;
+    // Never grab something that is explicitly something else.
+    for (const bad of profile.keywords.never ?? []) {
+      for (const source of AUTHORED_EVIDENCE) {
+        if (exclusionHit(c.evidence[source], normalizeKey(bad))) return false;
+      }
+    }
+    // A search box is a single-line control, but guard anyway.
+    return !/such|search|filter/.test(c.haystack);
+  });
+
+  if (free.length !== 1) return;
+
+  result.set('description', {
+    candidate: free[0]!,
+    score: MIN_SCORE,
+    matchedBy: 'einziger-editor',
+  });
+  usedElements.add(free[0]!.element);
 }

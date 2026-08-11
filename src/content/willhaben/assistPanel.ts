@@ -206,14 +206,36 @@ export class AssistPanel {
     }
     body.appendChild(list);
 
-    if (state.debug?.length) {
+    // Rendered whenever diagnostics were requested — including when the list is
+    // empty, because "nothing was detected" is itself the answer.
+    if (state.debug) {
       const details = document.createElement('details');
       details.className = 'debug';
+      details.open = state.debug.length === 0;
+
       const summary = document.createElement('summary');
-      summary.textContent = `Debug: ${state.debug.length} Bedienelemente erkannt`;
+      summary.textContent = state.debug.length
+        ? `Diagnose: ${state.debug.length} Bedienelemente erkannt`
+        : 'Diagnose: kein Bedienelement erkannt';
+
       const pre = document.createElement('pre');
-      pre.textContent = state.debug.join('\n');
-      details.append(summary, pre);
+      pre.textContent = state.debug.join('\n') || 'Die Seite hat keine lesbaren Formularfelder geliefert.';
+
+      const copy = document.createElement('button');
+      copy.className = 'act';
+      copy.type = 'button';
+      copy.textContent = 'Diagnose kopieren';
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(state.debug!.join('\n'));
+          copy.textContent = 'Kopiert ✓';
+        } catch {
+          copy.textContent = 'Kopieren nicht erlaubt';
+        }
+        setTimeout(() => (copy.textContent = 'Diagnose kopieren'), 1600);
+      });
+
+      details.append(summary, pre, copy);
       body.appendChild(details);
     }
 

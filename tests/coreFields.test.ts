@@ -401,3 +401,94 @@ describe('nested editable hosts', () => {
     expect((candidates.find((c) => c.kind === 'textarea')!.element as HTMLElement).id).toBe('inner');
   });
 });
+
+describe('editor with no usable evidence at all', () => {
+  it('falls back to the only unassigned editor', async () => {
+    // Generated wrappers, no label, no aria, no data-testid, and no caption text
+    // anywhere the discovery engine could reach — the worst realistic case.
+    const d = new JSDOM(
+      `<form>
+         <div><span>Verkaufspreis</span><input class="a" type="text"></div>
+         <div><span>Titel</span><input class="b" type="text"></div>
+         <div class="q7"><div class="w8" contenteditable="true"></div></div>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    ).window.document;
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Der Beschreibungstext.' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+
+    const description = results.find((r) => r.field === 'description')!;
+    expect(description.status).toBe('filled');
+    expect(description.matchedBy).toBe('einziger-editor');
+    expect((d.querySelector('.w8') as HTMLElement).textContent).toContain('Der Beschreibungstext');
+  });
+
+  it('does not guess when several editors are free', async () => {
+    const d = new JSDOM(
+      `<form>
+         <div><span>Titel</span><input type="text"></div>
+         <div contenteditable="true" class="one"></div>
+         <div contenteditable="true" class="two"></div>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    ).window.document;
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Text' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+    expect(results.find((r) => r.field === 'description')!.status).toBe('not-found');
+    expect((d.querySelector('.one') as HTMLElement).textContent).toBe('');
+  });
+
+  it('does not steal a search box as the description', async () => {
+    const d = new JSDOM(
+      `<form>
+         <div><span>Titel</span><input type="text"></div>
+         <div><label for="s">Suchbegriff</label><textarea id="s"></textarea></div>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    ).window.document;
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Text' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+    expect((d.getElementById('s') as HTMLTextAreaElement).value).toBe('');
+    expect(results.find((r) => r.field === 'description')!.status).toBe('not-found');
+  });
+});
+
+describe('editor inside a shadow root', () => {
+  it('finds an editor in an open shadow root and uses the host caption', async () => {
+    const dom = new JSDOM(
+      `<form>
+         <div><span>Verkaufspreis</span><input type="text"></div>
+         <div><span>Titel</span><input type="text"></div>
+         <div><span>Beschreibung</span><div id="host"></div></div>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    );
+    const d = dom.window.document;
+    const host = d.getElementById('host')!;
+    const shadow = host.attachShadow({ mode: 'open' });
+    const editor = d.createElement('div');
+    editor.setAttribute('contenteditable', 'true');
+    shadow.appendChild(editor);
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Text im Shadow DOM.' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+
+    expect(results.find((r) => r.field === 'description')!.status).toBe('filled');
+    expect(editor.textContent).toContain('Text im Shadow DOM');
+  });
+});
