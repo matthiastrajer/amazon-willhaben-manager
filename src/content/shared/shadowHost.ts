@@ -12,11 +12,15 @@ export interface ShadowUi {
   destroy(): void;
 }
 
+/** Marks a host as belonging to this extension so field discovery skips it. */
+export const OWN_UI_ATTRIBUTE = 'data-awm-ui';
+
 export function createShadowUi(id: string, css: string): ShadowUi {
   document.getElementById(id)?.remove();
 
   const host = document.createElement('div');
   host.id = id;
+  host.setAttribute(OWN_UI_ATTRIBUTE, '');
   // The host itself must be inert so it never shifts the page layout.
   host.style.cssText = 'all: initial; position: static;';
 

@@ -492,3 +492,108 @@ describe('editor inside a shadow root', () => {
     expect(editor.textContent).toContain('Text im Shadow DOM');
   });
 });
+
+describe('editor that discards the first write', () => {
+  it('rewrites when the editor resets itself after mounting', async () => {
+    const d = new JSDOM(
+      `<form>
+         <div><span>Titel</span><input type="text"></div>
+         <div><span>Beschreibung</span><div id="ed" contenteditable="true"></div></div>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    ).window.document;
+
+    const editor = d.getElementById('ed')!;
+    // Mimic an editor that wipes the DOM from its own empty model once.
+    let wipes = 1;
+    editor.addEventListener('input', () => {
+      if (wipes-- > 0) setTimeout(() => (editor.textContent = ''), 0);
+    });
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Bleibt jetzt stehen.' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+
+    expect(results.find((r) => r.field === 'description')!.status).toBe('filled');
+    expect(editor.textContent).toContain('Bleibt jetzt stehen');
+  });
+
+  it('reports not-found when the editor keeps discarding the value', async () => {
+    const d = new JSDOM(
+      `<form>
+         <div><span>Titel</span><input type="text"></div>
+         <div><span>Beschreibung</span><div id="ed" contenteditable="true"></div></div>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    ).window.document;
+
+    const editor = d.getElementById('ed')!;
+    editor.addEventListener('input', () => setTimeout(() => (editor.textContent = ''), 0));
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Wird immer verworfen.' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+
+    // Honest reporting rather than a false success.
+    expect(results.find((r) => r.field === 'description')!.status).toBe('not-found');
+  });
+});
+
+describe('the extension never scans its own UI', () => {
+  it('skips controls inside an element marked as own UI', () => {
+    const d = new JSDOM(
+      `<form><span>Titel</span><input id="real" type="text"></form>
+       <div data-awm-ui>
+         <input id="panel-url" type="url" aria-label="Titel der Anzeige">
+       </div>`,
+    ).window.document;
+
+    const ids = collectCandidates(d).map((c) => (c.element as HTMLElement).id);
+    expect(ids).toContain('real');
+    expect(ids).not.toContain('panel-url');
+  });
+
+  it('skips a shadow root belonging to own UI', () => {
+    const dom = new JSDOM(`<form><span>Titel</span><input id="real" type="text"></form>
+       <div id="host" data-awm-ui></div>`);
+    const d = dom.window.document;
+    const shadow = d.getElementById('host')!.attachShadow({ mode: 'open' });
+    const sneaky = d.createElement('input');
+    sneaky.id = 'inside-panel';
+    sneaky.setAttribute('aria-label', 'Beschreibung');
+    shadow.appendChild(sneaky);
+
+    const ids = collectCandidates(d).map((c) => (c.element as HTMLElement).id);
+    expect(ids).toEqual(['real']);
+  });
+});
+
+describe('the real placeholder identifies the description', () => {
+  it('matches the editor by its own placeholder wording alone', async () => {
+    // Exactly what the live form exposes: no label, no caption, only a
+    // data-placeholder — and a second editor present so the fallback cannot fire.
+    const d = new JSDOM(
+      `<form>
+         <div><span>Titel</span><input type="text"></div>
+         <div><div contenteditable="true" id="other"></div></div>
+         <div><div contenteditable="true" id="desc"
+              data-placeholder="z.B. Abmessungen, Größe, Gründe für den Verkauf, Mängel/Defekte falls vorhanden."></div></div>
+       </form>`,
+      { url: CREATE_FORM_URL },
+    ).window.document;
+
+    const results = await fillWillhabenForm(
+      product({ listingDescription: 'Beschreibungstext.' }),
+      { ...DEFAULT_SETTINGS },
+      { doc: d, settleMs: 0 },
+    );
+
+    expect(results.find((r) => r.field === 'description')!.status).toBe('filled');
+    expect((d.getElementById('desc') as HTMLElement).textContent).toContain('Beschreibungstext');
+    expect((d.getElementById('other') as HTMLElement).textContent).toBe('');
+  });
+});

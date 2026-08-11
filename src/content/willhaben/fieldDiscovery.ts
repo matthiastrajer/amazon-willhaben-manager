@@ -1,4 +1,5 @@
 import { normalizeKey, normalizeWhitespace, tokenize } from '@/core/utils/text';
+import { OWN_UI_ATTRIBUTE } from '../shared/shadowHost';
 import type { ControlKind, FieldProfile, WillhabenFieldId } from './willhabenSelectors';
 
 /**
@@ -319,6 +320,9 @@ function* searchRoots(root: SearchRoot, depth = 0): Generator<SearchRoot> {
   yield root;
   if (depth > 6) return; // guard against pathological nesting
   for (const el of Array.from(root.querySelectorAll('*'))) {
+    // Our own assist panel lives in a shadow root too; scanning it would offer
+    // its inputs as candidates for the marketplace's fields.
+    if (el.hasAttribute(OWN_UI_ATTRIBUTE)) continue;
     const shadow = (el as HTMLElement).shadowRoot;
     if (shadow) yield* searchRoots(shadow, depth + 1);
   }
@@ -344,6 +348,7 @@ export function collectCandidates(doc: SearchRoot = document): Candidate[] {
     );
     for (const node of nodes) {
       if (seen.has(node)) continue;
+      if (node.closest(`[${OWN_UI_ATTRIBUTE}]`)) continue;
       // Skip an editable host that contains another collected editable host.
       if (isEditableHost(node) && node.querySelector(EDITABLE_SELECTOR)) continue;
       seen.add(node);

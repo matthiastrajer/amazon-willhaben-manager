@@ -30,7 +30,7 @@ Danach in Chrome:
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` (inkl. Verifikation) |
 | `npm run build:only` | Build ohne vorherigen Typecheck |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest-Suite (191 Tests) |
+| `npm test` | Vitest-Suite (196 Tests) |
 | `npm run test:watch` | Tests im Watch-Modus |
 | `npm run icons` | Icons neu generieren |
 | `npm run zip` | `dist/` als ZIP für den Web Store packen |
@@ -276,6 +276,21 @@ Formular-Varianten: klassische Labels, nur `aria-label`, Framework-Markup mit
 generierten Klassen, unvollständiges Formular — und `marktplatzForm`, das die
 Struktur der echten Willhaben-Seite nachbildet.
 
+### Schreiben in den Editor
+
+Das Beschreibungsfeld ist ein `contenteditable`-Editor in einem Shadow-Root, der
+**kein Label und keine erreichbare Beschriftung** trägt — nur ein
+`data-placeholder`. Erkannt wird er über drei unabhängige Wege: die
+Platzhalter-Formulierung selbst („Abmessungen", „Gründe für den Verkauf",
+„Mängel/Defekte"), die Shadow-Root-Suche, und die Rückfallebene unten.
+
+Geschrieben wird über vier Wege, jeder mit Rücklesen geprüft. Entscheidend ist
+aber die **Wiederholung**: ein noch initialisierender Editor nimmt den Text an und
+ersetzt das DOM danach aus seinem eigenen (leeren) Modell — der Schreibvorgang
+liest sich als erfolgreich, das Feld bleibt leer. Deshalb wird der Wert nach einer
+Pause erneut geprüft und bis zu dreimal nachgeschrieben. Verwirft der Editor ihn
+dauerhaft, wird das Feld ehrlich als „nicht gefunden" gemeldet statt als erledigt.
+
 ### Rückfallebene für die Beschreibung
 
 Ein Rich-Text-Editor kann *überhaupt keine* verwertbaren Merkmale tragen: kein
@@ -377,7 +392,7 @@ bevorzugt verwendet).
 npm test
 ```
 
-191 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
+196 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
 Suchseiten), ASIN-/Preis-/Bild-Erkennung, Duplikaterkennung, Titel- und
 Beschreibungsgenerierung, Kategorie-Mapping, Preis- und Gewinnberechnung
 (inkl. Verlusten und Nullwerten), Storage inklusive gleichzeitiger Schreibzugriffe,

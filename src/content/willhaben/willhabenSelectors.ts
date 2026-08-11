@@ -79,7 +79,14 @@ export const WILLHABEN_FIELDS: FieldProfile[] = [
     kinds: ['textarea', 'text'],
     keywords: {
       // No bare "text": it matches far too much once caption text is scored.
-      must: ['beschreibung', 'description', 'anzeigentext'],
+      // The last four come from the field's own placeholder on the live form
+      // ("z.B. Abmessungen, Größe, Gründe für den Verkauf, Mängel/Defekte falls
+      // vorhanden."), which is wording rather than markup and gives the editor
+      // real positive evidence even though it carries no label.
+      must: [
+        'beschreibung', 'description', 'anzeigentext',
+        'abmessungen', 'grunde fur den verkauf', 'mangel defekte', 'defekte falls vorhanden',
+      ],
       nice: ['beschreibe', 'weitere informationen', 'details'],
       never: ['kurzbeschreibung suche', 'suchbegriff'],
     },

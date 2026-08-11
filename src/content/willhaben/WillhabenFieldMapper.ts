@@ -260,8 +260,11 @@ function setRichTextValue(host: HTMLElement, value: string): boolean {
     if (typeof win.InputEvent === 'function') {
       selectAll(el);
       const init = { bubbles: true, cancelable: true, inputType: 'insertText', data: value };
-      el.dispatchEvent(new win.InputEvent('beforeinput', init));
-      el.textContent = value;
+      const before = new win.InputEvent('beforeinput', init);
+      const handled = !el.dispatchEvent(before);
+      // A cancelled beforeinput means the editor inserted the text through its
+      // own model. Writing textContent on top of that would fight the editor.
+      if (!handled) el.textContent = value;
       el.dispatchEvent(new win.InputEvent('input', init));
       if (editorHasValue(el, value)) return true;
     }
@@ -274,6 +277,33 @@ function setRichTextValue(host: HTMLElement, value: string): boolean {
   el.dispatchEvent(new win.Event('input', { bubbles: true }));
   el.dispatchEvent(new win.Event('change', { bubbles: true }));
   return editorHasValue(el, value);
+}
+
+/**
+ * Writes into a rich-text editor and makes sure the value survives.
+ *
+ * An editor that is still mounting accepts the text and then replaces the DOM
+ * from its own (empty) document model on the next render — the write reads back
+ * as successful and the field ends up empty anyway. So the value is verified
+ * again after a pause and rewritten if it was lost.
+ */
+async function writeEditorWithRetry(
+  el: HTMLElement,
+  value: string,
+  settleMs: number,
+  attempts = 3,
+): Promise<boolean> {
+  const target = resolveEditable(el);
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const written = setRichTextValue(el, value);
+    // Give the editor a chance to re-render before trusting the result.
+    await new Promise((resolve) => setTimeout(resolve, Math.max(settleMs, 120)));
+    if (editorHasValue(target, value)) return true;
+    if (!written && attempt === attempts - 1) return false;
+  }
+
+  return editorHasValue(target, value);
 }
 
 /** Checkbox/radio handling: a truthy value ticks the box. */
@@ -371,10 +401,14 @@ export async function fillWillhabenForm(
     }
 
     const el = match.candidate.element;
-    const success =
-      match.candidate.kind === 'checkbox' || match.candidate.kind === 'radio'
-        ? setToggle(el as HTMLInputElement, mapped.value)
-        : setControlValue(el, mapped.value);
+    let success: boolean;
+    if (match.candidate.kind === 'checkbox' || match.candidate.kind === 'radio') {
+      success = setToggle(el as HTMLInputElement, mapped.value);
+    } else if (isEditableHost(el)) {
+      success = await writeEditorWithRetry(el, mapped.value, options.settleMs ?? DEFAULT_SETTLE_MS);
+    } else {
+      success = setControlValue(el, mapped.value);
+    }
 
     // Yield before touching the next field. Focusing the next control blurs this
     // one synchronously, and a framework that has not flushed its state yet then
