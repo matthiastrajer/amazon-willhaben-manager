@@ -50,6 +50,12 @@ export interface Settings {
    * script detects the form by its contents, not by this URL.
    */
   willhabenCreateUrl: string;
+  /**
+   * Entry point for eBay's "Angebot erstellen" flow. Configurable for the same
+   * reason as the Willhaben one: marketplaces change their routes, and the
+   * content script detects the form by its fields rather than by this URL.
+   */
+  ebayCreateUrl: string;
 
   defaultPlatform: string;
 }
@@ -85,6 +91,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
   willhabenCreateUrl:
     'https://www.willhaben.at/iad/anzeigenaufgabe/marktplatz?adTypeId=67&productId=67',
+  ebayCreateUrl: 'https://www.ebay.at/sl/sell',
 
   defaultPlatform: 'willhaben',
 };

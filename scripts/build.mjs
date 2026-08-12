@@ -20,7 +20,7 @@ import path from 'node:path';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = path.join(root, 'dist');
 
-const CONTENT_ENTRIES = ['content-amazon', 'content-willhaben'];
+const CONTENT_ENTRIES = ['content-amazon', 'content-willhaben', 'content-ebay'];
 const watch = process.argv.includes('--watch');
 
 async function run() {

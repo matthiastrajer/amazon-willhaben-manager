@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
+import { fillWillhabenForm } from './helpers';
 import { extractAmazonProduct } from '@/content/amazon/amazonExtractor';
-import { fillWillhabenForm } from '@/content/willhaben/WillhabenFieldMapper';
-import { detectWillhabenPage } from '@/content/willhaben/willhabenDetector';
+import { detectListingPage } from '@/content/shared/formDetector';
+import { WILLHABEN_CONFIG } from '@/content/willhaben/willhabenConfig';
 import { ProductService } from '@/core/services/ProductService';
 import { SaleService } from '@/core/services/SaleService';
 import { ListingService } from '@/core/services/ListingService';
@@ -91,7 +92,7 @@ describe('end-to-end: Amazon → Willhaben → Verkauf → Dashboard', () => {
     expect(product.preparedAt).toBeTruthy();
 
     const willhabenDoc = new JSDOM(labelledForm(), { url: CREATE_FORM_URL }).window.document;
-    expect(detectWillhabenPage(willhabenDoc, CREATE_FORM_URL).formReady).toBe(true);
+    expect(detectListingPage(WILLHABEN_CONFIG, willhabenDoc, CREATE_FORM_URL).formReady).toBe(true);
 
     const fillResults = await fillWillhabenForm(product, settings, { doc: willhabenDoc });
     expect((willhabenDoc.getElementById('ad-title') as HTMLInputElement).value).toBe(

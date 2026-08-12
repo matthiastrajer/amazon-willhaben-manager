@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Amazon → Willhaben Manager",
+  "name": "Amazon → Willhaben & eBay Manager",
   "version": "1.0.0",
-  "description": "Amazon-Produkte analysieren, Willhaben-Anzeigen vorbereiten und Reselling verwalten: Bestand, Listings, Verkäufe, Gewinn, Marge, ROI.",
+  "description": "Amazon-Produkte analysieren, Anzeigen für Willhaben und eBay vorbereiten und Reselling verwalten: Bestand, Listings, Verkäufe, Gewinn, Marge, ROI.",
   "minimum_chrome_version": "110",
   "icons": {
     "16": "icons/icon-16.png",
@@ -24,12 +24,21 @@
     "service_worker": "service-worker.js",
     "type": "module"
   },
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "contextMenus"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "contextMenus"
+  ],
   "host_permissions": [
     "https://www.amazon.de/*",
     "https://www.amazon.at/*",
     "https://www.amazon.com/*",
-    "https://www.willhaben.at/*"
+    "https://www.willhaben.at/*",
+    "https://www.ebay.at/*",
+    "https://www.ebay.de/*",
+    "https://www.ebay.com/*"
   ],
   "content_scripts": [
     {
@@ -38,25 +47,49 @@
         "https://www.amazon.at/*",
         "https://www.amazon.com/*"
       ],
-      "js": ["content-amazon.js"],
+      "js": [
+        "content-amazon.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     },
     {
-      "matches": ["https://www.willhaben.at/*"],
-      "js": ["content-willhaben.js"],
+      "matches": [
+        "https://www.willhaben.at/*"
+      ],
+      "js": [
+        "content-willhaben.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://www.ebay.at/*",
+        "https://www.ebay.de/*",
+        "https://www.ebay.com/*"
+      ],
+      "js": [
+        "content-ebay.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/dashboard/index.html", "icons/*"],
+      "resources": [
+        "src/dashboard/index.html",
+        "icons/*"
+      ],
       "matches": [
         "https://www.amazon.de/*",
         "https://www.amazon.at/*",
         "https://www.amazon.com/*",
-        "https://www.willhaben.at/*"
+        "https://www.willhaben.at/*",
+        "https://www.ebay.at/*",
+        "https://www.ebay.de/*",
+        "https://www.ebay.com/*"
       ]
     }
   ]

@@ -2,27 +2,32 @@ import type { Product } from '@/core/models/Product';
 import type { Settings } from '@/core/models/Settings';
 import type { FillResult, ListingInfo, PlatformAdapter } from '@/shared/types';
 import { parseNumber } from '@/core/utils/format';
-import { fillWillhabenForm } from './WillhabenFieldMapper';
-import { adIdFromUrl, detectWillhabenPage, isAdDetailPage, waitForForm } from './willhabenDetector';
-import type { WillhabenFieldId } from './willhabenSelectors';
+import { buildListingValues } from './listingValues';
+import { fillListingForm } from './formFiller';
+import { detectListingPage, isDetailPage, listingIdFromUrl, waitForForm } from './formDetector';
+import type { ListingFieldId, PlatformFormConfig } from './fieldProfiles';
 
 /**
- * Willhaben side of the PlatformAdapter contract.
+ * One adapter implementation for every marketplace.
  *
- * The adapter only ever *prepares* an ad: it fills visible form fields and then
- * hands control back to the user. It never clicks a publish button, never
- * submits a form and never interacts with login or verification flows.
+ * The behaviour is identical across platforms — detect the form, fill what can be
+ * filled, hand control back to the user — so only the field descriptions differ.
+ * An adapter only ever *prepares* a listing: it never clicks a publish control,
+ * never submits a form and never touches login or verification flows.
  */
-export class WillhabenAdapter implements PlatformAdapter {
-  readonly platform = 'willhaben';
+export class MarketplaceAdapter implements PlatformAdapter {
+  readonly platform: string;
 
   constructor(
+    private readonly config: PlatformFormConfig,
     private readonly settings: Settings,
     private readonly doc: Document = document,
-  ) {}
+  ) {
+    this.platform = config.platform;
+  }
 
   async detect(): Promise<boolean> {
-    return detectWillhabenPage(this.doc).isCreateFlow;
+    return detectListingPage(this.config, this.doc).isCreateFlow;
   }
 
   /**
@@ -31,9 +36,9 @@ export class WillhabenAdapter implements PlatformAdapter {
    */
   async prepareListing(
     product: Product,
-    options: { hints?: Partial<Record<WillhabenFieldId, string>>; timeoutMs?: number } = {},
+    options: { hints?: Partial<Record<ListingFieldId, string>>; timeoutMs?: number } = {},
   ): Promise<FillResult> {
-    const detection = await waitForForm({
+    const detection = await waitForForm(this.config, {
       doc: this.doc,
       timeoutMs: options.timeoutMs ?? 15000,
     });
@@ -44,12 +49,13 @@ export class WillhabenAdapter implements PlatformAdapter {
         formDetected: detection.isCreateFlow,
         fields: [],
         error: detection.isCreateFlow
-          ? 'Das Willhaben-Formular wurde erkannt, die Felder konnten aber nicht geladen werden.'
-          : 'Willhaben-Formular konnte nicht erkannt werden.',
+          ? `Das ${this.config.label}-Formular wurde erkannt, die Felder konnten aber nicht geladen werden.`
+          : `${this.config.label}-Formular konnte nicht erkannt werden.`,
       };
     }
 
-    const fields = await fillWillhabenForm(product, this.settings, {
+    const values = buildListingValues(this.config, product, this.settings);
+    const fields = await fillListingForm(this.config, values, {
       hints: options.hints,
       doc: this.doc,
     });
@@ -66,15 +72,13 @@ export class WillhabenAdapter implements PlatformAdapter {
   }
 
   /**
-   * Reads the published ad's identity from the current page. Only reports
-   * `detected: true` on an actual ad detail page; the creation form has no URL
-   * to capture yet.
+   * Reads the published listing's identity from the current page. Only reports
+   * `detected: true` on an actual detail page; the creation form has no URL to
+   * capture yet.
    */
   async extractListingInfo(): Promise<ListingInfo> {
     const url = this.doc.defaultView?.location.href ?? location.href;
-    if (!isAdDetailPage(url)) {
-      return { detected: false };
-    }
+    if (!isDetailPage(this.config, url)) return { detected: false };
 
     const title =
       this.doc.querySelector('h1')?.textContent?.trim() ||
@@ -88,7 +92,7 @@ export class WillhabenAdapter implements PlatformAdapter {
     return {
       detected: true,
       url: url.split('?')[0],
-      externalId: adIdFromUrl(url),
+      externalId: listingIdFromUrl(this.config, url),
       title: title || undefined,
       price: parseNumber(priceMeta),
     };

@@ -81,6 +81,7 @@ function makeContentConfig(name: string, entry: string): UserConfig {
 export const CONTENT_ENTRIES: Record<string, string> = {
   'content-amazon': './src/content/amazon/index.ts',
   'content-willhaben': './src/content/willhaben/index.ts',
+  'content-ebay': './src/content/ebay/index.ts',
 };
 
 export default defineConfig(() => {

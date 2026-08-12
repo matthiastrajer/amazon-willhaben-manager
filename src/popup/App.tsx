@@ -20,6 +20,7 @@ import {
   generateListingTitle,
 } from '@/core/services/ListingContentService';
 import { StorageService } from '@/core/services/StorageService';
+import { PLATFORMS, platformLabel } from '@/shared/constants';
 import { Alert, Field, Money, MoneyInput, ProductImage, Spinner } from '@/ui/components';
 import { useTheme } from '@/ui/useStore';
 
@@ -37,6 +38,9 @@ const CHECK_FIELDS: { key: string; label: string }[] = [
 
 type Phase = 'detecting' | 'idle' | 'analyzing' | 'analyzed' | 'saving' | 'prepared';
 
+/** Marketplaces the extension can actually prefill, in button order. */
+const SUPPORTED_PLATFORMS = PLATFORMS.filter((p) => p.supported);
+
 export function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [pageState, setPageState] = useState<AmazonPageState | null>(null);
@@ -47,6 +51,7 @@ export function App() {
   const [purchasePrice, setPurchasePrice] = useState<number | undefined>();
   const [salePrice, setSalePrice] = useState<number | undefined>();
   const [savedProduct, setSavedProduct] = useState<Product | null>(null);
+  const [preparing, setPreparing] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
 
   useTheme(settings.theme);
@@ -107,8 +112,14 @@ export function App() {
     }
   }, [settings]);
 
-  const prepare = useCallback(async () => {
+  /**
+   * Saves the product and hands it to one marketplace. The same product record
+   * feeds every platform, so preparing for eBay after Willhaben reuses it rather
+   * than creating a second entry.
+   */
+  const prepare = useCallback(async (platform: string) => {
     if (!extracted) return;
+    setPreparing(platform);
     setPhase('saving');
     setError(undefined);
     try {
@@ -132,7 +143,7 @@ export function App() {
               purchasePrice: purchasePrice ?? exact.product.purchasePrice,
               plannedSalePrice: salePrice ?? exact.product.plannedSalePrice,
             },
-            'Erneut für Willhaben vorbereitet',
+            `Erneut für ${platformLabel(platform)} vorbereitet`,
           )) ?? exact.product;
       } else {
         const created = await ProductService.createFromExtraction(extracted, settings, {
@@ -152,13 +163,15 @@ export function App() {
       }
 
       setSavedProduct(product);
-      await sendMessage({ type: 'PREPARE_WILLHABEN', productId: product.id });
+      await sendMessage({ type: 'PREPARE_LISTING', productId: product.id, platform });
       setPhase('prepared');
-      // Willhaben opens in a new tab, which closes the popup anyway.
+      // The marketplace opens in a new tab, which closes the popup anyway.
       window.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setPhase('analyzed');
+    } finally {
+      setPreparing(null);
     }
   }, [extracted, duplicates, forceNew, purchasePrice, salePrice, settings]);
 
@@ -324,20 +337,23 @@ export function App() {
             {phase === 'analyzing' ? 'Analysiere…' : 'Produkt analysieren'}
           </button>
 
-          <button
-            className="btn btn-primary"
-            type="button"
-            disabled={!extracted || !extracted.title || phase === 'saving'}
-            onClick={() => void prepare()}
-          >
-            {phase === 'saving' ? <span className="spinner" /> : null}
-            → Willhaben vorbereiten
-          </button>
+          {SUPPORTED_PLATFORMS.map((platform, index) => (
+            <button
+              key={platform.id}
+              className={`btn ${index === 0 ? 'btn-primary' : ''}`}
+              type="button"
+              disabled={!extracted || !extracted.title || phase === 'saving'}
+              onClick={() => void prepare(platform.id)}
+            >
+              {preparing === platform.id ? <span className="spinner" /> : null}
+              → {platform.label} vorbereiten
+            </button>
+          ))}
         </div>
 
         {savedProduct && phase === 'prepared' ? (
           <Alert tone="ok" title="Vorbereitet">
-            {savedProduct.title.slice(0, 40)} wurde gespeichert. Bitte auf Willhaben prüfen und selbst
+            {savedProduct.title.slice(0, 40)} wurde gespeichert. Bitte im Formular prüfen und selbst
             veröffentlichen.
           </Alert>
         ) : null}

@@ -1,8 +1,8 @@
-# Amazon → Willhaben Manager
+# Amazon → Willhaben & eBay Manager
 
 Chrome-Erweiterung (Manifest V3), die zwei Dinge verbindet:
 
-1. **Amazon-Produkte analysieren** und mit wenigen Klicks eine Willhaben-Anzeige vorbereiten.
+1. **Amazon-Produkte analysieren** und mit wenigen Klicks eine Anzeige für **Willhaben** oder **eBay** vorbereiten.
 2. **Reselling verwalten**: Produktkatalog, Bestand, Listings, Verkäufe, Gewinn, Marge, ROI und Statistiken.
 
 Alle Daten bleiben lokal im Browserprofil. Kein Backend, kein Tracking, keine Analytics.
@@ -30,7 +30,7 @@ Danach in Chrome:
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` (inkl. Verifikation) |
 | `npm run build:only` | Build ohne vorherigen Typecheck |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Vitest-Suite (196 Tests) |
+| `npm test` | Vitest-Suite (214 Tests) |
 | `npm run test:watch` | Tests im Watch-Modus |
 | `npm run icons` | Icons neu generieren |
 | `npm run zip` | `dist/` als ZIP für den Web Store packen |
@@ -127,15 +127,22 @@ src/
 │   │   ├── AmazonAdapter.ts       PlatformAdapter-Implementierung
 │   │   ├── floatingButton.ts      optionale Schaltfläche auf Produktseiten
 │   │   └── index.ts               Content-Script-Einstiegspunkt
-│   ├── willhaben/
-│   │   ├── willhabenSelectors.ts  semantische Feldprofile (keine CSS-Klassen!)
-│   │   ├── fieldDiscovery.ts      Scoring-Engine für Formularfelder
-│   │   ├── WillhabenFieldMapper.ts Produkt → Feldwerte + DOM-Schreiben
-│   │   ├── willhabenDetector.ts   Formularerkennung, MutationObserver, Retry
+│   ├── shared/                   plattformunabhängige Maschinerie
+│   │   ├── fieldProfiles.ts       Feld-Vokabular + PlatformFormConfig
+│   │   ├── fieldDiscovery.ts      Scoring-Engine (Shadow DOM, iframes)
+│   │   ├── formFiller.ts          Werte ins DOM schreiben, mit Verifikation
+│   │   ├── formDetector.ts        Formularerkennung, MutationObserver, Retry
+│   │   ├── listingValues.ts       Produkt → Feldwerte
+│   │   ├── MarketplaceAdapter.ts  PlatformAdapter für jede Plattform
+│   │   ├── listingRunner.ts       kompletter Content-Script-Ablauf
 │   │   ├── assistPanel.ts         Assistent-Overlay (Shadow DOM)
-│   │   ├── WillhabenAdapter.ts    PlatformAdapter-Implementierung
-│   │   └── index.ts               Content-Script-Einstiegspunkt
-│   └── shared/shadowHost.ts       isolierte UI-Wurzel für Content Scripts
+│   │   └── shadowHost.ts          isolierte UI-Wurzel
+│   ├── willhaben/
+│   │   ├── willhabenConfig.ts     Feldprofile für Willhaben (keine CSS-Klassen!)
+│   │   └── index.ts               3 Zeilen: Runner mit dieser Config starten
+│   └── ebay/
+│       ├── ebayConfig.ts          Feldprofile für eBay
+│       └── index.ts               3 Zeilen: Runner mit dieser Config starten
 ├── core/
 │   ├── models/                    Product, Sale, Listing, Template, Settings
 │   ├── services/                  Storage, Product, Sale, Listing, Duplicate,
@@ -163,7 +170,52 @@ src/
 ### Berechtigungen
 
 `storage`, `tabs`, `activeTab`, `scripting`, `contextMenus` sowie Host-Zugriff
-ausschließlich auf `amazon.de`, `amazon.at`, `amazon.com` und `willhaben.at`.
+ausschließlich auf `amazon.de/at/com`, `willhaben.at` und `ebay.at/de/com`.
+
+---
+
+## Mehrere Plattformen
+
+Popup und Produktdetailseite zeigen einen Knopf pro unterstützter Plattform:
+
+```
+[ → Willhaben vorbereiten ]
+[ → eBay vorbereiten ]
+```
+
+Beide arbeiten auf **demselben Produktdatensatz**. Ein Produkt nach Willhaben und
+danach nach eBay vorzubereiten erzeugt keinen zweiten Katalogeintrag, sondern ein
+zweites `Listing` — Bestand, Einkaufskosten und Gewinnrechnung bleiben eine
+einzige Wahrheit. Die Produktdetailseite listet alle Anzeigen mit ihren URLs.
+
+Die gesamte Maschinerie liegt in `src/content/shared/` und ist plattformneutral.
+Eine Plattform besteht nur aus einer `PlatformFormConfig`: Feldprofile, URL- und
+Text-Hinweise, Muster für veröffentlichte Anzeigen. Die Content Scripts sind
+je drei Zeilen. Eine weitere Plattform (Shpock, Vinted …) heißt daher: eine
+Config-Datei, ein Manifest-Eintrag — keine neue Logik.
+
+| Unterschied | Willhaben | eBay |
+| --- | --- | --- |
+| Menge | – | `Menge` wird gefüllt (verfügbarer Bestand, nicht Einkaufsmenge) |
+| Abholung | Feld vorhanden | – |
+| Untertitel | – | erkannt, aber **bewusst nie gefüllt** (kostet Gebühr) |
+| Kategorie | wird aus dem Titel vorgeschlagen | verlangt zusätzlich „Artikelmerkmale“ |
+
+### Was bei eBay noch nicht verifiziert ist
+
+Die Willhaben-Profile sind gegen das echte Formular geprüft. Die **eBay-Profile
+sind es nicht** — ebay.at/ebay.de waren aus der Entwicklungsumgebung nicht
+erreichbar. Erfundene CSS-Selektoren gibt es deshalb auch dort keine: die
+Erkennung stützt sich auf eBays deutsche Feldbezeichnungen („Titel",
+„Artikelzustand", „Sofort-Kaufen-Preis", „Menge", „Artikelstandort") und auf die
+Rückfallebenen der gemeinsamen Erkennung. Was nicht zugeordnet werden kann,
+meldet der Assistent als „nicht gefunden" mit Wert zum Kopieren — geraten wird
+nichts.
+
+eBay hat zwar eine offizielle Sell-API, die aber OAuth-Zugangsdaten und einen
+Server verlangt. Das widerspricht dem rein lokalen Betrieb, und private
+Endpunkte sind ausgeschlossen — daher derselbe Weg wie bei Willhaben: sichtbares
+Formular vorbereiten, veröffentlichen tut der Benutzer.
 
 ---
 
@@ -392,7 +444,7 @@ bevorzugt verwendet).
 npm test
 ```
 
-196 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
+214 Tests decken ab: Amazon-Extraktion (inkl. fehlender Felder, defektem JSON-LD,
 Suchseiten), ASIN-/Preis-/Bild-Erkennung, Duplikaterkennung, Titel- und
 Beschreibungsgenerierung, Kategorie-Mapping, Preis- und Gewinnberechnung
 (inkl. Verlusten und Nullwerten), Storage inklusive gleichzeitiger Schreibzugriffe,

@@ -14,7 +14,7 @@ import { calculateExpectedProfit, calculateSaleProfit, unitPurchaseCost } from '
 import { stockOf } from '@/core/services/InventoryService';
 import { sendMessage } from '@/shared/messages';
 import { LISTING_STATUS_LABELS } from '@/core/models/Listing';
-import { platformLabel } from '@/shared/constants';
+import { PLATFORMS, platformLabel } from '@/shared/constants';
 import { formatDate, formatDateTime } from '@/core/utils/format';
 import {
   Alert,
@@ -27,6 +27,9 @@ import {
 } from '@/ui/components';
 import { ProductForm } from '../components/ProductForm';
 import { SaleDialog } from '../components/SaleDialog';
+
+/** Marketplaces the extension can actually prefill. */
+const SUPPORTED_PLATFORMS = PLATFORMS.filter((p) => p.supported);
 
 export function ProductDetail({
   productId,
@@ -96,7 +99,6 @@ export function ProductDetail({
   const realisedPurchase = realised.reduce((sum, b) => sum + b.totalPurchaseCost, 0);
 
   const images = product.images.length ? product.images : [];
-  const activeListing = listings.find((l) => l.url);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -143,23 +145,32 @@ export function ProductDetail({
               <ExternalLink size={14} /> Amazon
             </a>
           ) : null}
-          {activeListing?.url ? (
-            <a className="btn" href={activeListing.url} target="_blank" rel="noreferrer">
-              <ExternalLink size={14} /> Willhaben
-            </a>
-          ) : null}
-          <button
-            className="btn"
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                await sendMessage({ type: 'PREPARE_WILLHABEN', productId: product.id });
-              })
-            }
-          >
-            → Willhaben vorbereiten
-          </button>
+          {listings
+            .filter((l) => l.url)
+            .map((l) => (
+              <a key={l.id} className="btn" href={l.url} target="_blank" rel="noreferrer">
+                <ExternalLink size={14} /> {platformLabel(l.platform)}
+              </a>
+            ))}
+          {SUPPORTED_PLATFORMS.map((platform) => (
+            <button
+              key={platform.id}
+              className="btn"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  await sendMessage({
+                    type: 'PREPARE_LISTING',
+                    productId: product.id,
+                    platform: platform.id,
+                  });
+                })
+              }
+            >
+              → {platform.label} vorbereiten
+            </button>
+          ))}
           <button className="btn" type="button" onClick={() => setEditing(true)}>
             <Pencil size={14} /> Bearbeiten
           </button>
@@ -179,9 +190,9 @@ export function ProductDetail({
         {error ? <Alert tone="err">{error}</Alert> : null}
 
         {product.status === 'READY_TO_LIST' ? (
-          <Alert tone="warn" title="Willhaben vorbereitet – noch nicht bestätigt">
+          <Alert tone="warn" title="Vorbereitet – noch nicht bestätigt">
             Das Formular wurde vorbereitet. Sobald die Anzeige tatsächlich online ist, bestätige den
-            Status „Gelistet“ (im Assistenten auf Willhaben oder direkt hier).
+            Status „Gelistet“ (im Assistenten auf der Plattform oder direkt hier).
           </Alert>
         ) : null}
 

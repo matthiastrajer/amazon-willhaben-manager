@@ -1,135 +1,33 @@
-import { CONDITION_LABELS, type Product } from '@/core/models/Product';
-import type { Settings } from '@/core/models/Settings';
 import type { FieldFillResult } from '@/shared/types';
 import { normalizeKey } from '@/core/utils/text';
-import { mapCategory } from '@/core/services/categoryMappings';
-import {
-  WILLHABEN_FIELDS,
-  type FieldProfile,
-  type WillhabenFieldId,
-} from './willhabenSelectors';
 import {
   collectCandidates,
   discoverFields,
   isEditableHost,
   type Candidate,
-  type FieldMatch,
 } from './fieldDiscovery';
+import type { ListingFieldId, PlatformFormConfig } from './fieldProfiles';
 
 /**
- * Turns a Product into concrete values for the marketplace form and writes them
- * into the discovered controls.
+ * Writes prepared values into whatever marketplace form is on screen.
  *
  * Two rules govern everything in this file:
  *  1. Nothing is ever submitted. Only field values are set; the user reviews and
  *     publishes.
- *  2. A field that cannot be filled reliably is reported as `manual` with a
- *     reason, never silently skipped and never faked.
+ *  2. A field that cannot be filled reliably is reported as `manual` or
+ *     `not-found` with a reason, never silently skipped and never faked.
  */
 
+/** One value ready to be written into a form field. */
 export interface MappedValue {
-  field: WillhabenFieldId;
+  field: ListingFieldId;
   label: string;
-  /** Value to type into the form. */
   value: string;
   /** Additional user-facing context, e.g. the proposed category path. */
   note?: string;
 }
 
-/**
- * Formats a price for the ad form.
- *
- * A whole amount is written without decimals: the marketplace's price input
- * filters the input itself, and feeding it "79,00" left "79" behind while the
- * field still counted as unfilled. Sending "79" avoids that entirely.
- */
-export function formatPriceForForm(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace('.', ',');
-}
-
-/** The fields the Willhaben Marktplatz form actually offers. */
-const CORE_FIELDS: WillhabenFieldId[] = ['price', 'title', 'description'];
-
-/** Builds the values without touching the DOM — pure and unit-testable. */
-export function mapProductToFields(product: Product, settings: Settings): MappedValue[] {
-  const values: MappedValue[] = [];
-
-  const price = product.plannedSalePrice;
-  if (price !== undefined && price !== null && price > 0) {
-    values.push({ field: 'price', label: 'Verkaufspreis', value: formatPriceForForm(price) });
-  }
-
-  const title = product.listingTitle?.trim() || product.title;
-  if (title) values.push({ field: 'title', label: 'Titel', value: title });
-
-  const description = product.listingDescription?.trim() || product.description;
-  if (description) values.push({ field: 'description', label: 'Beschreibung', value: description });
-
-  if (settings.onlyCoreFields) {
-    // Images stay in the list because they are the one manual step the user
-    // still needs the prepared values for.
-    const images = product.selectedImages.length ? product.selectedImages : product.images;
-    if (images.length) {
-      values.push({
-        field: 'images',
-        label: 'Bilder',
-        value: images.slice(0, settings.maxImages).join('\n'),
-        note: `${Math.min(images.length, settings.maxImages)} Bild(er) vorbereitet.`,
-      });
-    }
-    return values.filter((v) => CORE_FIELDS.includes(v.field) || v.field === 'images');
-  }
-
-  const category = mapCategory({
-    categoryPath: product.category ? [product.category, product.subcategory ?? ''] : [],
-    category: product.category,
-    title: product.title,
-    bulletPoints: product.bulletPoints,
-  });
-  values.push({
-    field: 'category',
-    label: 'Kategorie',
-    value: category.path.join(' → '),
-    note:
-      category.mappingId === null
-        ? 'Keine eindeutige Zuordnung gefunden – bitte Kategorie selbst wählen.'
-        : `Vorschlag basierend auf der Amazon-Kategorie (${category.confidence}).`,
-  });
-
-  const condition = CONDITION_LABELS[product.condition];
-  if (condition) values.push({ field: 'condition', label: 'Zustand', value: condition });
-
-  if (product.brand) values.push({ field: 'brand', label: 'Marke', value: product.brand });
-  if (product.color) values.push({ field: 'color', label: 'Farbe', value: product.color });
-  if (product.size) values.push({ field: 'size', label: 'Größe', value: product.size });
-
-  if (settings.defaultPostalCode) {
-    values.push({ field: 'postalCode', label: 'PLZ', value: settings.defaultPostalCode });
-  }
-  if (settings.defaultLocation) {
-    values.push({ field: 'location', label: 'Ort', value: settings.defaultLocation });
-  }
-  if (settings.defaultShipping) {
-    values.push({ field: 'shipping', label: 'Versand', value: settings.defaultShipping });
-  }
-  if (settings.defaultPickup) {
-    values.push({ field: 'pickup', label: 'Abholung', value: 'Ja' });
-  }
-
-  const images = product.selectedImages.length ? product.selectedImages : product.images;
-  if (images.length) {
-    values.push({
-      field: 'images',
-      label: 'Bilder',
-      value: images.slice(0, settings.maxImages).join('\n'),
-      note: `${Math.min(images.length, settings.maxImages)} Bild(er) vorbereitet.`,
-    });
-  }
-
-  return values;
-}
-
-// --------------------------------------------------------------- DOM writing
+// ------------------------------------------------------------- DOM writing
 
 /**
  * Writes a value into a control the way a user would.
@@ -320,9 +218,10 @@ function setToggle(el: HTMLInputElement, value: string): boolean {
   return el.checked === shouldCheck;
 }
 
+
 export interface FillOptions {
   /** User-taught element hints: field id -> CSS selector. */
-  hints?: Partial<Record<WillhabenFieldId, string>>;
+  hints?: Partial<Record<ListingFieldId, string>>;
   doc?: Document;
   /** Pause between fields so the page's framework can flush its state. */
   settleMs?: number;
@@ -338,22 +237,20 @@ const settle = (ms: number): Promise<void> =>
  *
  * A field ends up as:
  *   filled     – value written and verified by reading it back
- *   manual     – the extension cannot fill this reliably (images, category)
+ *   manual     – the platform cannot accept this automatically (images, category)
  *   not-found  – no control matched with sufficient confidence
- *   skipped    – no value available for this product
  */
-export async function fillWillhabenForm(
-  product: Product,
-  settings: Settings,
+export async function fillListingForm(
+  config: PlatformFormConfig,
+  values: MappedValue[],
   options: FillOptions = {},
 ): Promise<FieldFillResult[]> {
   const doc = options.doc ?? document;
-  const values = mapProductToFields(product, settings);
   const candidates = collectCandidates(doc);
 
   // Only discover fields we actually have a value for.
-  const wantedIds = new Set(values.map((v) => v.field));
-  const profiles = WILLHABEN_FIELDS.filter((p) => wantedIds.has(p.id));
+  const wanted = new Set(values.map((v) => v.field));
+  const profiles = config.fields.filter((p) => wanted.has(p.id));
   const discovered = discoverFields(profiles, candidates);
 
   // A user-taught selector always beats the automatic match.
@@ -363,18 +260,15 @@ export async function fillWillhabenForm(
     if (!el) continue;
     const candidate = candidates.find((c) => c.element === el) ?? describeManually(el);
     if (candidate) {
-      discovered.set(field as WillhabenFieldId, {
-        candidate,
-        score: 100,
-        matchedBy: 'hint',
-      });
+      discovered.set(field as ListingFieldId, { candidate, score: 100, matchedBy: 'hint' });
     }
   }
 
   const results: FieldFillResult[] = [];
 
   for (const mapped of values) {
-    const profile = WILLHABEN_FIELDS.find((p) => p.id === mapped.field) as FieldProfile;
+    const profile = config.fields.find((p) => p.id === mapped.field);
+    if (!profile) continue;
     const match = discovered.get(mapped.field);
 
     if (!profile.autoFillable) {
@@ -437,6 +331,7 @@ export async function fillWillhabenForm(
   return results;
 }
 
+/** Minimal candidate for an element the user pointed at themselves. */
 function describeManually(el: HTMLElement): Candidate | null {
   const tag = el.tagName.toLowerCase();
   const kind =
@@ -449,11 +344,10 @@ function describeManually(el: HTMLElement): Candidate | null {
     element: el,
     kind: kind as Candidate['kind'],
     evidence: {
-      label: '', ariaLabel: '', caption: '', placeholder: '', name: '', id: '', testId: '', nearby: '',
+      label: '', ariaLabel: '', caption: '', placeholder: '',
+      name: '', id: '', testId: '', nearby: '',
     },
     haystack: '',
     visible: true,
   };
 }
-
-export type { FieldMatch };

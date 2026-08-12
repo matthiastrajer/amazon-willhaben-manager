@@ -20,14 +20,14 @@ export type Message =
   // popup -> service worker
   | { type: 'GET_PAGE_STATE'; tabId?: number }
   | { type: 'ANALYZE_ACTIVE_TAB'; tabId?: number }
-  | { type: 'PREPARE_WILLHABEN'; productId: string }
+  | { type: 'PREPARE_LISTING'; productId: string; platform: string }
   | { type: 'OPEN_DASHBOARD'; route?: string }
-  // service worker -> willhaben content script
-  | { type: 'WILLHABEN_PING' }
-  | { type: 'WILLHABEN_FILL'; productId?: string }
-  | { type: 'WILLHABEN_EXTRACT_LISTING' }
-  // willhaben content script -> service worker
-  | { type: 'LISTING_DETECTED'; productId: string; info: ListingInfo }
+  // service worker -> marketplace content script
+  | { type: 'LISTING_PING'; platform: string }
+  | { type: 'LISTING_FILL'; platform: string; productId?: string }
+  | { type: 'LISTING_EXTRACT'; platform: string }
+  // marketplace content script -> service worker
+  | { type: 'LISTING_DETECTED'; productId: string; platform: string; info: ListingInfo }
   // any -> service worker
   | { type: 'DATA_CHANGED'; collections: string[] };
 
@@ -41,11 +41,11 @@ export interface TypedResponses {
   AMAZON_EXTRACT: ExtractionResult;
   GET_PAGE_STATE: AmazonPageState;
   ANALYZE_ACTIVE_TAB: ExtractionResult;
-  PREPARE_WILLHABEN: { tabId: number };
+  PREPARE_LISTING: { tabId: number };
   OPEN_DASHBOARD: { tabId: number };
-  WILLHABEN_PING: { pong: true; formDetected: boolean };
-  WILLHABEN_FILL: FillResult;
-  WILLHABEN_EXTRACT_LISTING: ListingInfo;
+  LISTING_PING: { pong: true; formDetected: boolean };
+  LISTING_FILL: FillResult;
+  LISTING_EXTRACT: ListingInfo;
   LISTING_DETECTED: { saved: boolean };
   DATA_CHANGED: { ok: true };
 }

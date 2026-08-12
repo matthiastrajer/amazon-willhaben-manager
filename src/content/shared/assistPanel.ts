@@ -1,6 +1,6 @@
 import type { FieldFillResult } from '@/shared/types';
 import type { Product } from '@/core/models/Product';
-import { CONTENT_TOKENS, createShadowUi, type ShadowUi } from '../shared/shadowHost';
+import { CONTENT_TOKENS, createShadowUi, type ShadowUi } from './shadowHost';
 
 const HOST_ID = 'awm-willhaben-assist';
 
@@ -116,7 +116,10 @@ const STATE_LABELS: Record<FieldFillResult['status'], string> = {
 export class AssistPanel {
   private ui: ShadowUi | null = null;
 
-  constructor(private readonly handlers: AssistPanelHandlers) {}
+  constructor(
+    private readonly handlers: AssistPanelHandlers,
+    private readonly platformLabel = 'Willhaben',
+  ) {}
 
   render(state: AssistPanelState): void {
     this.ui ??= createShadowUi(HOST_ID, PANEL_CSS);
@@ -135,7 +138,7 @@ export class AssistPanel {
     const header = document.createElement('header');
     const title = document.createElement('span');
     title.className = 'title';
-    title.textContent = 'Amazon → Willhaben';
+    title.textContent = `Amazon → ${this.platformLabel}`;
 
     const collapse = document.createElement('button');
     collapse.type = 'button';
@@ -183,7 +186,7 @@ export class AssistPanel {
       hint.className = 'product';
       hint.textContent =
         state.error ??
-        'Das Willhaben-Formular konnte nicht automatisch erkannt werden. Öffne die Anzeigenerstellung und versuche es erneut – die Werte stehen unten zum Kopieren bereit.';
+        `Das ${this.platformLabel}-Formular konnte nicht automatisch erkannt werden. Öffne die Anzeigenerstellung und versuche es erneut – die Werte stehen unten zum Kopieren bereit.`;
       body.appendChild(hint);
     } else {
       const counts = {
@@ -321,7 +324,7 @@ export class AssistPanel {
     const urlInput = document.createElement('input');
     urlInput.className = 'url';
     urlInput.type = 'url';
-    urlInput.placeholder = 'Willhaben-URL der veröffentlichten Anzeige';
+    urlInput.placeholder = `${this.platformLabel}-URL der veröffentlichten Anzeige`;
     urlInput.value = location.href;
     footer.appendChild(urlInput);
 

@@ -8,7 +8,7 @@ import { StorageService } from '@/core/services/StorageService';
 import { ExportService, downloadTextFile } from '@/core/services/ExportService';
 import { calculateSuggestedPrice, rulesFrom } from '@/core/services/PriceCalculator';
 import { formatCurrency, todayISODate } from '@/core/utils/format';
-import { STORAGE_KEYS } from '@/shared/constants';
+import { PLATFORMS, STORAGE_KEYS } from '@/shared/constants';
 import {
   Alert,
   Checkbox,
@@ -201,6 +201,27 @@ export function SettingsPage({ store }: { store: Store }) {
                 onChange={(v) => void update({ willhabenCreateUrl: v })}
               />
             </Field>
+
+            <Field
+              label="eBay-Startseite für neue Angebote"
+              hint="Für ebay.de statt ebay.at hier die deutsche Adresse eintragen. Auch hier wird das Formular anhand seiner Felder erkannt."
+            >
+              <TextInput
+                value={s.ebayCreateUrl}
+                onChange={(v) => void update({ ebayCreateUrl: v })}
+              />
+            </Field>
+
+            <Field label="Standard-Plattform" hint="Wird vom Rechtsklick-Menü auf Amazon verwendet.">
+              <Select
+                value={s.defaultPlatform}
+                onChange={(v) => void update({ defaultPlatform: v })}
+                options={PLATFORMS.filter((p) => p.supported).map((p) => ({
+                  value: p.id,
+                  label: p.label,
+                }))}
+              />
+            </Field>
           </div>
         </section>
 
@@ -227,7 +248,7 @@ export function SettingsPage({ store }: { store: Store }) {
             <Checkbox
               checked={s.onlyCoreFields}
               onChange={(v) => void update({ onlyCoreFields: v })}
-              label="Nur Verkaufspreis, Titel und Beschreibung übernehmen"
+              label="Nur Verkaufspreis, Titel und Beschreibung übernehmen (empfohlen)"
             />
             <Checkbox
               checked={s.autoPrepareImages}

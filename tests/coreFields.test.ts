@@ -1,18 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
+import { fillWillhabenForm } from './helpers';
 import {
   compactBullet,
   extractCorePhrase,
   generateListingDescription,
   generateListingTitle,
 } from '@/core/services/ListingContentService';
-import {
-  fillWillhabenForm,
-  formatPriceForForm,
-  mapProductToFields,
-  setControlValue,
-} from '@/content/willhaben/WillhabenFieldMapper';
-import { collectCandidates } from '@/content/willhaben/fieldDiscovery';
+import { setControlValue } from '@/content/shared/formFiller';
+import { buildListingValues, formatPriceForForm } from '@/content/shared/listingValues';
+import { WILLHABEN_CONFIG } from '@/content/willhaben/willhabenConfig';
+import { collectCandidates } from '@/content/shared/fieldDiscovery';
 import { DEFAULT_SETTINGS } from '@/core/models/Settings';
 import type { Product } from '@/core/models/Product';
 import { CREATE_FORM_URL, marktplatzForm } from './fixtures/willhabenForm';
@@ -153,7 +151,7 @@ describe('only core fields', () => {
   const settings = { ...DEFAULT_SETTINGS, defaultPostalCode: '1010', defaultLocation: 'Wien' };
 
   it('maps price, title, description and images only', () => {
-    const fields = mapProductToFields(
+    const fields = buildListingValues(WILLHABEN_CONFIG, 
       product({ color: 'Schwarz', size: 'L', listingTitle: 'Kurz', listingDescription: 'Text' }),
       settings,
     );
@@ -161,7 +159,7 @@ describe('only core fields', () => {
   });
 
   it('maps everything again when the option is switched off', () => {
-    const fields = mapProductToFields(
+    const fields = buildListingValues(WILLHABEN_CONFIG, 
       product({ color: 'Schwarz', listingTitle: 'Kurz', listingDescription: 'Text' }),
       { ...settings, onlyCoreFields: false },
     );

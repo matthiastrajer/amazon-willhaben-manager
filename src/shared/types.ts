@@ -89,6 +89,8 @@ export interface PlatformAdapter {
 export interface PendingListing {
   productId: string;
   product: Product;
+  /** Which marketplace this hand-off is for. */
+  platform: string;
   createdAt: string;
   /** Set once the content script has filled the form for this hand-off. */
   consumedAt?: string;

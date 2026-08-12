@@ -11,16 +11,45 @@ import {
   generateListingTitle,
 } from '@/core/services/ListingContentService';
 import type { Product } from '@/core/models/Product';
+import type { Settings } from '@/core/models/Settings';
 
 /**
  * MV3 service worker.
  *
  * It owns the things that must survive a content script being torn down by a
- * navigation: storage writes, tab orchestration and the Amazon → Willhaben
- * hand-off.
+ * navigation: storage writes, tab orchestration and the hand-off from Amazon to
+ * a marketplace.
  */
 
-const CONTEXT_MENU_ID = 'awm-prepare-willhaben';
+const CONTEXT_MENU_ID = 'awm-prepare-listing';
+
+/**
+ * Where each marketplace's listing flow lives. Entry URLs are settings-backed
+ * because marketplaces change their routes; the content script recognises the
+ * form by its fields, not by the URL.
+ */
+const MARKETPLACES: Record<
+  string,
+  {
+    label: string;
+    tabPattern: string;
+    urlHints: string[];
+    createUrl: (settings: Settings) => string;
+  }
+> = {
+  willhaben: {
+    label: 'Willhaben',
+    tabPattern: `https://${WILLHABEN_HOST}/*`,
+    urlHints: ['anzeigenaufgabe', 'anzeige'],
+    createUrl: (s) => s.willhabenCreateUrl,
+  },
+  ebay: {
+    label: 'eBay',
+    tabPattern: 'https://*.ebay.*/*',
+    urlHints: ['/sl/', '/lstng', 'sell'],
+    createUrl: (s) => s.ebayCreateUrl,
+  },
+};
 
 // ------------------------------------------------------------------ lifecycle
 
@@ -41,9 +70,10 @@ async function syncContextMenu(): Promise<void> {
   await chrome.contextMenus.removeAll();
   if (!settings.contextMenu) return;
 
+  const label = MARKETPLACES[settings.defaultPlatform]?.label ?? 'Willhaben';
   chrome.contextMenus.create({
     id: CONTEXT_MENU_ID,
-    title: 'Produkt mit Willhaben vorbereiten',
+    title: `Produkt für ${label} vorbereiten`,
     contexts: ['page', 'link', 'selection'],
     documentUrlPatterns: AMAZON_DOMAINS.map((d) => `https://${d.host}/*`),
   });
@@ -59,7 +89,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   void (async () => {
     try {
       const product = await importFromTab(tabId);
-      await prepareWillhaben(product.id);
+      const settings = await SettingsService.get();
+      await prepareListing(product.id, settings.defaultPlatform);
     } catch (err) {
       console.error('[AWM] context menu action failed', err);
       await notifyTab(tabId, err instanceof Error ? err.message : String(err));
@@ -72,7 +103,7 @@ async function notifyTab(tabId: number, message: string): Promise<void> {
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: (text: string) => window.alert(`Amazon → Willhaben\n\n${text}`),
+      func: (text: string) => window.alert(`Amazon → Reselling Manager\n\n${text}`),
       args: [message],
     });
   } catch {
@@ -200,43 +231,52 @@ async function refreshListingText(product: Product): Promise<Product> {
  * The product is explicitly NOT marked as LISTED here — only the user can
  * confirm that an ad actually went live.
  */
-async function prepareWillhaben(productId: string): Promise<{ tabId: number }> {
+async function prepareListing(productId: string, platform: string): Promise<{ tabId: number }> {
   const stored = await ProductService.byId(productId);
   if (!stored) throw new Error('Produkt nicht gefunden.');
 
   const product = await refreshListingText(stored);
   const settings = await SettingsService.get();
 
+  const target = MARKETPLACES[platform];
+  if (!target) throw new Error(`Plattform "${platform}" wird nicht unterstützt.`);
+
   const pending: PendingListing = {
     productId: product.id,
     product,
+    platform,
     createdAt: new Date().toISOString(),
   };
   await StorageService.set(STORAGE_KEYS.pendingListing, pending);
 
   await ListingService.upsertPrepared({
     productId: product.id,
-    platform: 'willhaben',
+    platform,
     listedPrice: product.plannedSalePrice,
     title: product.listingTitle ?? product.title,
     description: product.listingDescription ?? product.description,
   });
 
   if (product.status === 'DRAFT') {
-    await ProductService.setStatus(product.id, 'READY_TO_LIST', 'Willhaben-Formular vorbereitet');
+    await ProductService.setStatus(
+      product.id,
+      'READY_TO_LIST',
+      `${target.label}-Formular vorbereitet`,
+    );
   }
 
-  // Reuse an existing Willhaben tab instead of stacking new ones.
-  const existing = await chrome.tabs.query({ url: `https://${WILLHABEN_HOST}/*` });
-  const target = existing.find((t) => t.url?.includes('anzeige'));
+  // Reuse an existing tab for this marketplace instead of stacking new ones.
+  const createUrl = target.createUrl(settings);
+  const existing = await chrome.tabs.query({ url: target.tabPattern });
+  const reusable = existing.find((t) => target.urlHints.some((h) => t.url?.includes(h)));
 
   let tabId: number;
-  if (target?.id) {
-    await chrome.tabs.update(target.id, { active: true, url: settings.willhabenCreateUrl });
-    tabId = target.id;
+  if (reusable?.id) {
+    await chrome.tabs.update(reusable.id, { active: true, url: createUrl });
+    tabId = reusable.id;
   } else {
-    const tab = await chrome.tabs.create({ url: settings.willhabenCreateUrl, active: true });
-    if (!tab.id) throw new Error('Willhaben-Tab konnte nicht geöffnet werden.');
+    const tab = await chrome.tabs.create({ url: createUrl, active: true });
+    if (!tab.id) throw new Error(`${target.label}-Tab konnte nicht geöffnet werden.`);
     tabId = tab.id;
   }
 
@@ -244,7 +284,7 @@ async function prepareWillhaben(productId: string): Promise<{ tabId: number }> {
   // covers the case where the tab was already on the form.
   void waitForTabReady(tabId).then(async () => {
     try {
-      await sendTabMessage(tabId, { type: 'WILLHABEN_FILL', productId: product.id });
+      await sendTabMessage(tabId, { type: 'LISTING_FILL', platform, productId: product.id });
     } catch {
       // The content script auto-fills on load, so a failed ping is not fatal.
     }
@@ -304,8 +344,8 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
           return;
         }
 
-        case 'PREPARE_WILLHABEN': {
-          sendResponse(ok(await prepareWillhaben(message.productId)));
+        case 'PREPARE_LISTING': {
+          sendResponse(ok(await prepareListing(message.productId, message.platform)));
           return;
         }
 
@@ -318,7 +358,7 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
           if (message.info.url) {
             await ListingService.attachUrl(
               message.productId,
-              'willhaben',
+              message.platform,
               message.info.url,
               'ACTIVE',
             );

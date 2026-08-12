@@ -1,6 +1,6 @@
 import { normalizeKey, normalizeWhitespace, tokenize } from '@/core/utils/text';
-import { OWN_UI_ATTRIBUTE } from '../shared/shadowHost';
-import type { ControlKind, FieldProfile, WillhabenFieldId } from './willhabenSelectors';
+import { OWN_UI_ATTRIBUTE } from './shadowHost';
+import type { ControlKind, FieldProfile, ListingFieldId } from './fieldProfiles';
 
 /**
  * Semantic form-field discovery.
@@ -473,8 +473,8 @@ export function scoreCandidate(candidate: Candidate, profile: FieldProfile): Fie
 export function discoverFields(
   profiles: FieldProfile[],
   candidates: Candidate[],
-): Map<WillhabenFieldId, FieldMatch> {
-  const ranked: { field: WillhabenFieldId; match: FieldMatch }[] = [];
+): Map<ListingFieldId, FieldMatch> {
+  const ranked: { field: ListingFieldId; match: FieldMatch }[] = [];
 
   for (const profile of profiles) {
     for (const candidate of candidates) {
@@ -485,7 +485,7 @@ export function discoverFields(
 
   ranked.sort((a, b) => b.match.score - a.match.score);
 
-  const result = new Map<WillhabenFieldId, FieldMatch>();
+  const result = new Map<ListingFieldId, FieldMatch>();
   const usedElements = new Set<Element>();
 
   for (const { field, match } of ranked) {
@@ -515,7 +515,7 @@ export function discoverFields(
 function applyUniqueEditorFallback(
   profiles: FieldProfile[],
   candidates: Candidate[],
-  result: Map<WillhabenFieldId, FieldMatch>,
+  result: Map<ListingFieldId, FieldMatch>,
   usedElements: Set<Element>,
 ): void {
   const wantsDescription = profiles.some((p) => p.id === 'description');

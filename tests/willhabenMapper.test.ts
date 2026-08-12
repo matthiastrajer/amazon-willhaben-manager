@@ -1,17 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { collectCandidates, discoverFields, scoreCandidate } from '@/content/willhaben/fieldDiscovery';
+import { fillWillhabenForm } from './helpers';
+import { collectCandidates, discoverFields, scoreCandidate } from '@/content/shared/fieldDiscovery';
+import { setControlValue } from '@/content/shared/formFiller';
+import { buildListingValues } from '@/content/shared/listingValues';
 import {
-  fillWillhabenForm,
-  mapProductToFields,
-  setControlValue,
-} from '@/content/willhaben/WillhabenFieldMapper';
-import {
-  adIdFromUrl,
-  detectWillhabenPage,
-  isAdDetailPage,
-} from '@/content/willhaben/willhabenDetector';
-import { WILLHABEN_FIELDS, profileFor } from '@/content/willhaben/willhabenSelectors';
+  detectListingPage,
+  isDetailPage,
+  listingIdFromUrl,
+} from '@/content/shared/formDetector';
+import { WILLHABEN_CONFIG } from '@/content/willhaben/willhabenConfig';
+import { profileFor } from '@/content/shared/fieldProfiles';
 import { parseWillhabenId } from '@/core/services/ListingService';
 import { DEFAULT_SETTINGS } from '@/core/models/Settings';
 import type { Product } from '@/core/models/Product';
@@ -81,7 +80,7 @@ function product(overrides: Partial<Product> = {}): Product {
 
 describe('page detection', () => {
   it('detects the ad-creation flow through its fields', () => {
-    const result = detectWillhabenPage(doc(labelledForm()), CREATE_FORM_URL);
+    const result = detectListingPage(WILLHABEN_CONFIG, doc(labelledForm()), CREATE_FORM_URL);
     expect(result.isCreateFlow).toBe(true);
     expect(result.formReady).toBe(true);
     expect(result.foundFields).toContain('title');
@@ -89,12 +88,12 @@ describe('page detection', () => {
   });
 
   it('detects it in a framework-rendered form without labels', () => {
-    const result = detectWillhabenPage(doc(frameworkForm()), CREATE_FORM_URL);
+    const result = detectListingPage(WILLHABEN_CONFIG, doc(frameworkForm()), CREATE_FORM_URL);
     expect(result.formReady).toBe(true);
   });
 
   it('does not mistake the search page for the ad form', () => {
-    const result = detectWillhabenPage(
+    const result = detectListingPage(WILLHABEN_CONFIG, 
       new JSDOM(unrelatedPage(), { url: 'https://www.willhaben.at/iad/' }).window.document,
       'https://www.willhaben.at/iad/',
     );
@@ -103,9 +102,9 @@ describe('page detection', () => {
   });
 
   it('recognises an ad detail URL and its id', () => {
-    expect(isAdDetailPage(AD_DETAIL_URL)).toBe(true);
-    expect(adIdFromUrl(AD_DETAIL_URL)).toBe('1234567890');
-    expect(isAdDetailPage(CREATE_FORM_URL)).toBe(false);
+    expect(isDetailPage(WILLHABEN_CONFIG, AD_DETAIL_URL)).toBe(true);
+    expect(listingIdFromUrl(WILLHABEN_CONFIG, AD_DETAIL_URL)).toBe('1234567890');
+    expect(isDetailPage(WILLHABEN_CONFIG, CREATE_FORM_URL)).toBe(false);
     expect(parseWillhabenId(AD_DETAIL_URL)).toBe('1234567890');
   });
 });
@@ -113,7 +112,7 @@ describe('page detection', () => {
 describe('semantic field discovery', () => {
   it('finds fields via <label for>', () => {
     const candidates = collectCandidates(doc(labelledForm()));
-    const found = discoverFields(WILLHABEN_FIELDS, candidates);
+    const found = discoverFields(WILLHABEN_CONFIG.fields, candidates);
     expect((found.get('title')!.candidate.element as HTMLInputElement).id).toBe('ad-title');
     expect((found.get('description')!.candidate.element as HTMLElement).id).toBe('ad-desc');
     expect((found.get('price')!.candidate.element as HTMLElement).id).toBe('ad-price');
@@ -122,7 +121,7 @@ describe('semantic field discovery', () => {
   });
 
   it('finds fields via aria-label alone', () => {
-    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(doc(ariaForm())));
+    const found = discoverFields(WILLHABEN_CONFIG.fields, collectCandidates(doc(ariaForm())));
     expect(found.has('title')).toBe(true);
     expect(found.has('description')).toBe(true);
     expect(found.has('price')).toBe(true);
@@ -130,7 +129,7 @@ describe('semantic field discovery', () => {
   });
 
   it('finds fields via data-testid and sibling caption text', () => {
-    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(doc(frameworkForm())));
+    const found = discoverFields(WILLHABEN_CONFIG.fields, collectCandidates(doc(frameworkForm())));
     const title = found.get('title')!.candidate.element as HTMLElement;
     expect(title.getAttribute('data-testid')).toBe('ad-insertion-title-field');
     expect(found.has('description')).toBe(true);
@@ -138,7 +137,7 @@ describe('semantic field discovery', () => {
   });
 
   it('never assigns one control to two different fields', () => {
-    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(doc(labelledForm())));
+    const found = discoverFields(WILLHABEN_CONFIG.fields, collectCandidates(doc(labelledForm())));
     const elements = [...found.values()].map((m) => m.candidate.element);
     expect(new Set(elements).size).toBe(elements.length);
   });
@@ -147,7 +146,7 @@ describe('semantic field discovery', () => {
     const candidates = collectCandidates(
       new JSDOM(unrelatedPage()).window.document,
     );
-    const priceProfile = profileFor('price')!;
+    const priceProfile = profileFor(WILLHABEN_CONFIG, 'price')!;
     for (const candidate of candidates) {
       expect(scoreCandidate(candidate, priceProfile)).toBeNull();
     }
@@ -158,7 +157,7 @@ describe('semantic field discovery', () => {
       <label for="a">Titel</label><input id="a" type="hidden" name="title">
       <label for="b">Preis</label><input id="b" type="text" name="price" disabled>
     </form>`;
-    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(new JSDOM(html).window.document));
+    const found = discoverFields(WILLHABEN_CONFIG.fields, collectCandidates(new JSDOM(html).window.document));
     expect(found.has('title')).toBe(false);
     expect(found.has('price')).toBe(false);
   });
@@ -166,7 +165,7 @@ describe('semantic field discovery', () => {
 
 describe('product → field mapping', () => {
   it('produces the expected values without touching the DOM', () => {
-    const values = mapProductToFields(product(), allFieldSettings);
+    const values = buildListingValues(WILLHABEN_CONFIG, product(), allFieldSettings);
     const byField = Object.fromEntries(values.map((v) => [v.field, v.value]));
 
     expect(byField.title).toBe('Fitgriff Zughilfen / Lifting Straps – Neu');
@@ -179,7 +178,7 @@ describe('product → field mapping', () => {
   });
 
   it('omits fields for which the product has no data', () => {
-    const values = mapProductToFields(
+    const values = buildListingValues(WILLHABEN_CONFIG, 
       product({ brand: undefined, color: undefined, size: undefined, plannedSalePrice: undefined }),
       { ...allFieldSettings, defaultPostalCode: '', defaultLocation: '' },
     );
@@ -292,13 +291,13 @@ describe('setControlValue', () => {
 
 describe('real Willhaben Marktplatz form layout', () => {
   it('detects the form even though it has no <label for> elements', () => {
-    const result = detectWillhabenPage(doc(marktplatzForm()), CREATE_FORM_URL);
+    const result = detectListingPage(WILLHABEN_CONFIG, doc(marktplatzForm()), CREATE_FORM_URL);
     expect(result.isCreateFlow).toBe(true);
     expect(result.formReady).toBe(true);
   });
 
   it('finds title, price and description via their visible captions', () => {
-    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(doc(marktplatzForm())));
+    const found = discoverFields(WILLHABEN_CONFIG.fields, collectCandidates(doc(marktplatzForm())));
     expect(found.has('title')).toBe(true);
     expect(found.has('price')).toBe(true);
     expect(found.has('description')).toBe(true);
@@ -307,7 +306,7 @@ describe('real Willhaben Marktplatz form layout', () => {
 
   it('does not mistake the "zu verschenken" toggle for the price field', () => {
     const d = doc(marktplatzForm());
-    const found = discoverFields(WILLHABEN_FIELDS, collectCandidates(d));
+    const found = discoverFields(WILLHABEN_CONFIG.fields, collectCandidates(d));
     const priceEl = found.get('price')!.candidate.element as HTMLInputElement;
     expect(priceEl.type).toBe('text');
     expect(priceEl.id).not.toBe('giveaway');
@@ -342,13 +341,13 @@ describe('real Willhaben Marktplatz form layout', () => {
   it('does not consider the 404 page an ad form', () => {
     const d = new JSDOM(notFoundPage(), { url: 'https://www.willhaben.at/iad/anzeigeaufgeben' })
       .window.document;
-    expect(detectWillhabenPage(d, 'https://www.willhaben.at/iad/anzeigeaufgeben').formReady).toBe(false);
+    expect(detectListingPage(WILLHABEN_CONFIG, d, 'https://www.willhaben.at/iad/anzeigeaufgeben').formReady).toBe(false);
   });
 
   it('does not consider the chooser step an ad form', () => {
     const html = `<h1>Neue Anzeige aufgeben</h1>
       <div><h2>Marktplatz</h2><button type="button">Kostenlose Anzeige aufgeben</button></div>`;
     const d = new JSDOM(html, { url: CREATE_CHOOSER_URL }).window.document;
-    expect(detectWillhabenPage(d, CREATE_CHOOSER_URL).formReady).toBe(false);
+    expect(detectListingPage(WILLHABEN_CONFIG, d, CREATE_CHOOSER_URL).formReady).toBe(false);
   });
 });
