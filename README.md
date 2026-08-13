@@ -11,6 +11,12 @@ Alle Daten bleiben lokal im Browserprofil. Kein Backend, kein Tracking, keine An
 
 ## Installation
 
+**Ohne Entwicklungsumgebung** (fertiger Build, empfohlen für andere Rechner):
+siehe **[INSTALL.md](INSTALL.md)** — ZIP von GitHub laden, entpacken, `dist`
+laden. Kein Node.js nötig, da `dist/` im Repository liegt.
+
+**Mit Entwicklungsumgebung:**
+
 ```bash
 npm install
 npm run build

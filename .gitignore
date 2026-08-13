@@ -1,6 +1,9 @@
 node_modules/
-dist/
 *.zip
+
+# dist/ is deliberately NOT ignored: it is committed so the extension can be
+# installed on another machine straight from GitHub, without Node or a build.
+# Regenerate it with `npm run build` before committing a change.
 .DS_Store
 *.log
 .vite/
